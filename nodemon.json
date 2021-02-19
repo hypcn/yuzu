@@ -1,0 +1,12 @@
+{
+  "watch": [
+    "example/server/**/*.ts",
+    "example/shared/**/*.ts"
+  ],
+  "ext": "ts",
+  "ignore": [
+    "example/server/**/*.spec.ts",
+    "example/shared/**/*.spec.ts"
+  ],
+  "exec": "ts-node -r tsconfig-paths/register ./example/server/main.ts --project ./example/tsconfig.server.json"
+}
