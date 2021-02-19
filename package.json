@@ -1,0 +1,33 @@
+{
+  "name": "@hypericon/yuzu",
+  "version": "0.1.0",
+  "description": "Library to push UI State updates across connected clients in CI applications",
+  "main": "dist/index.js",
+  "author": "Ed Johnson, Hypericon Ltd",
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/hypcn/yuzu#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hypcn/yuzu.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "rxjs": "^6.6.3",
+    "ws": "^7.4.3"
+  },
+  "devDependencies": {
+    "@types/mithril": "^2.0.6",
+    "@types/node": "^14.14.30",
+    "@types/ws": "^7.4.0",
+    "mithril": "^2.0.4",
+    "parcel-bundler": "^1.12.4",
+    "rimraf": "^3.0.2",
+    "ts-node": "^9.1.1",
+    "typescript": "^4.1.5"
+  },
+  "files": [
+    "dist"
+  ]
+}
