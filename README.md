@@ -15,6 +15,8 @@ Install the library:
 
 `npm i @hypericon/yuzu`
 
+Typescript type definitions are included.
+
 ### Shared Definition
 
 Create the shared initial state definition object. This specifies the type of the state objects maintained in both the client and server and provides default values.
