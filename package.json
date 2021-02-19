@@ -11,6 +11,8 @@
     "url": "git+https://github.com/hypcn/yuzu.git"
   },
   "scripts": {
+    "build": "rimraf dist && tsc -p src/tsconfig.json",
+    "watch": "rimraf dist && tsc -p src/tsconfig.json -w",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
