@@ -26,6 +26,8 @@ Example:
 ```ts
 // shared/ui-state.ts
 
+import { BehaviorSubject } from "rxjs";
+
 export interface ShadeStatus {
   id: string,
   statusName: string,
@@ -40,8 +42,8 @@ export interface FixtureStatus {
 
 /** UI state object used to initialise both client and server */
 export const INITIAL_UI_STATE = {
-  shades: new BehaviorSubject<ShadeStatus[]>([]);
-  fixtures: new BehaviorSubject<FixtureStatus[]>([]);
+  shades: new BehaviorSubject<ShadeStatus[]>([]),
+  fixtures: new BehaviorSubject<FixtureStatus[]>([]),
 } as const;
 
 /** Optional UI state keys for easy refactoring. */
@@ -87,14 +89,14 @@ export class UiStateService {
   // or receiving method calls from other parts of the application.
 
   updateShadeStatus(id: string, status: ShadeStatus) {
-    const shades = uiState.get(UI_STATE.shades);
+    const shades = this.uiState.get(UI_STATE.shades);
     const shade = shades.find(s => s.id === id);
     if (shade) {
       Object.assign(shade, status);
     } else {
       shades.push(status);
     }
-    uiState.update(UI_STATE.shades, shades);
+    this.uiState.update(UI_STATE.shades, shades);
   }
 }
 ```
@@ -151,7 +153,7 @@ export const ExampleStatePage: m.Component<{}, {
       }),
 
       // (Optional) Read state using state keys object
-      m("p" `Fixture ABC123 alerts: ${state.get(UI_STATE.fixtures)
+      m("p", `Fixture ABC123 alerts: ${state.get(UI_STATE.fixtures)
                                            .filter(f => f.id === "abc123")
                                            .map(f => `${f.alerts}`)}`),
     ]);
