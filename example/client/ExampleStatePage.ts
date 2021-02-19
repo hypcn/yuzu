@@ -3,6 +3,8 @@ import { Subscription } from "rxjs";
 import { UI_STATE } from "../shared/ui-state-definition";
 import { state } from "./ui-state";
 
+const logSubscriptions = false;
+
 // Example Mithril page component
 export const ExampleStatePage: m.Component<{}, {
   sub: Subscription,
@@ -12,11 +14,13 @@ export const ExampleStatePage: m.Component<{}, {
     this.sub = new Subscription();
 
     // Listen to changes on a state key
-    this.sub.add(state.listen("shades", (shades) => console.log("shades updated")));
+    this.sub.add(state.listen("shades", (shades) => {
+      logSubscriptions && console.log("shades updated")
+    }));
 
     // Listen to changes on ALL state keys
     this.sub.add(state.listenAll((key, value) => {
-      console.log(`State key "${key}" updated, redrawing...`);
+      logSubscriptions && console.log(`State key "${key}" updated, redrawing...`);
       m.redraw();
     }));
   },
@@ -37,10 +41,12 @@ export const ExampleStatePage: m.Component<{}, {
         return m("p", `Shade ${s.id}: ${s.statusName} @${s.position}% (${alertMsg})`);
       }),
 
-      // (Optional) Read state using state keys object
-      m("p", `Fixture ABC123 alerts: ${state.get(UI_STATE.fixtures)
-        .filter(f => f.id === "abc123")
-        .map(f => `${f.alerts}`)}`),
+      // Read state using state keys object
+      m("h2", "Fixture Status:"),
+      state.get(UI_STATE.fixtures).map(f => {
+        const alertMsg = f.alerts.length > 0 ? f.alerts.join(", ") : "no alerts";
+        return m("p", `Fixture ${f.id} - brightness ${f.brightness}% - ${alertMsg}`);
+      }),
     ]);
   }
 
