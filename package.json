@@ -16,6 +16,7 @@
     "dev-server": "nodemon",
     "build": "rimraf dist && tsc -p src/tsconfig.json",
     "watch": "rimraf dist && tsc -p src/tsconfig.json -w",
+    "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
