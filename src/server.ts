@@ -114,7 +114,7 @@ export class ServerUiState<T extends BaseUiStateType> {
    * @param findFn Function to find the desired element to update
    * @param newValue The new value to which to set the element
    */
-  updateArrayElement<TKey extends keyof T, TElem extends T[TKey]["value"]>(key: TKey, findFn: (item: TElem, index: number) => boolean, newValue: TElem) {
+  updateArrayElement<TKey extends keyof T, TElem extends T[TKey]["value"]>(key: TKey, findFn: (item: TElem[number], index: number) => boolean, newValue: TElem) {
 
     const keyValue = this.get(key);
     if (!((keyValue as object) instanceof Array)) {
