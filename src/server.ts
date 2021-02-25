@@ -5,7 +5,13 @@ import { BaseUiStateType, ClientUiMessage, MsgSendAll, MsgSendUpdate } from "./s
 const DEFAULT_SERVER_PATH = "/api/yuzu";
 
 export interface ServerUiStateSocketConfig {
-  httpServer: Server,
+  /** Reference to existing HTTP server */
+  serverRef: Server | undefined,
+  /** Config options to create new server */
+  serverConfig: {
+    port: number,
+  } | undefined,
+  /** Path at which to listen for incoming connections */
   path?: string,
 }
 
@@ -20,9 +26,14 @@ export class ServerUiState<T extends BaseUiStateType> {
 
   constructor(initial: T, config: ServerUiStateSocketConfig) {
     this._state = initial;
+    if (!config.serverRef && !config.serverConfig) {
+      throw new Error(`Either an existing HTTP server or new server config must be supplied`);
+    }
 
+    const existingServer = Boolean(config.serverRef);
     this.wss = new WebSocket.Server({
-      server: config.httpServer,
+      server: existingServer ? config.serverRef : undefined,
+      port: existingServer ? undefined : config.serverConfig?.port,
       path: config.path || DEFAULT_SERVER_PATH,
     });
     this.listen();
