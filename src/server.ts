@@ -114,13 +114,17 @@ export class ServerUiState<T extends BaseUiStateType> {
    * @param findFn Function to find the desired element to update
    * @param newValue The new value to which to set the element
    */
-  updateArrayElement<TKey extends keyof T, TElem extends T[TKey]["value"]>(key: TKey, findFn: (item: TElem[number], index: number) => boolean, newValue: TElem) {
+  updateArrayElement<TKey extends keyof T, TElem extends T[TKey]["value"][number]>(
+    key: TKey,
+    findFn: (item: TElem, index: number) => boolean,
+    newValue: TElem
+  ) {
 
     const keyValue = this.get(key);
     if (!((keyValue as object) instanceof Array)) {
       throw new Error(`Cannot update element in list for state key "${key}", as the state value is not a list`);
     }
-    const stateList = keyValue as Array<T[TKey]["value"][number]>;
+    const stateList = keyValue as Array<TElem>;
 
     const targetState = stateList.find(findFn);
     if (targetState) {
