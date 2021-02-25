@@ -3,22 +3,24 @@ import { UiStateService } from "./ui-state";
 
 const PORT = 3000;
 
+const USE_EXISTING_SERVER = true;
+
 /**
  * Simple example HTTP server to use for the server's UI state websocket server
  */
-const server = new Server((req, res) => {
+const server = USE_EXISTING_SERVER ? new Server((req, res) => {
   console.log(`Req: ${req.headers.origin}`);
 
   res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || "*");
   res.writeHead(200);
   res.end('Hello, World!');
-});
+}) : undefined;
 
 
 // ===== Binding Example =====
 
-const uiStateSvc = new UiStateService(server);
+const uiStateSvc = new UiStateService({ server, port: PORT });
 // ServerUiState(UI_STATE, { httpServer: server });
 
 function getAlerts() {
@@ -78,6 +80,8 @@ updateFixtures();
 
 
 
-server.listen(PORT, () => {
-  console.log(`Listening on port ${PORT}`);
-});
+if (USE_EXISTING_SERVER) {
+  server?.listen(PORT, () => {
+    console.log(`Listening on port ${PORT}`);
+  });
+}

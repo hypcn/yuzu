@@ -6,8 +6,16 @@ export class UiStateService {
 
   private uiState: ServerUiState<typeof INITIAL_UI_STATE>;
 
-  constructor(server: Server) {
-    this.uiState = new ServerUiState(INITIAL_UI_STATE, { httpServer: server });
+  constructor(opts: {
+    server: Server | undefined,
+    port: number | undefined,
+  }) {
+    this.uiState = new ServerUiState(INITIAL_UI_STATE, {
+      serverRef: opts.server,
+      serverConfig: opts.port ? {
+        port: opts.port,
+      } : undefined,
+    });
   }
 
   // State could be updated by listening to other parts of the application,
