@@ -103,7 +103,7 @@ export class UiStateService {
 
 ### Client Implementation
 
-Implement the UI state client. The instance of the cliet UI state class should be a singleton. This is not strictly necessary, but more instances will increase network traffic for no gain.
+Implement the UI state client. The instance of the client UI state class should be a singleton. This is not strictly necessary, but more instances will increase network traffic for no gain.
 
 Example Mithril page component:
 
