@@ -2,9 +2,12 @@ import { Server } from "http";
 import WebSocket from "ws";
 import { BaseUiStateType, ClientUiMessage, MsgSendAll, MsgSendUpdate } from "./shared";
 
-// export interface ServerUiStateSocketConfig {
-//   // 
-// }
+const DEFAULT_SERVER_PATH = "/api/yuzu";
+
+export interface ServerUiStateSocketConfig {
+  httpServer: Server,
+  path?: string,
+}
 
 /**
  * 
@@ -15,12 +18,13 @@ export class ServerUiState<T extends BaseUiStateType> {
 
   private wss: WebSocket.Server;
 
-  constructor(initial: T, config: {
-    httpServer: Server,
-  }) {
+  constructor(initial: T, config: ServerUiStateSocketConfig) {
     this._state = initial;
 
-    this.wss = new WebSocket.Server({ server: config.httpServer });
+    this.wss = new WebSocket.Server({
+      server: config.httpServer,
+      path: config.path || DEFAULT_SERVER_PATH,
+    });
     this.listen();
   }
 

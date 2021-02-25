@@ -1,7 +1,7 @@
 import { Subscription } from "rxjs";
 import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage } from "./shared";
 
-const DEFAULT_TARGET_ADDRESS = "ws://localhost:3000";
+const DEFAULT_TARGET_ADDRESS = "ws://localhost:3000/api/yuzu";
 const DEFAULT_RECONNECT_TIMEOUT = 3_000;
 
 export interface ClientUiStateSocketConfig {
