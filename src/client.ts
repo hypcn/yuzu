@@ -233,8 +233,10 @@ export class ClientUiState<T extends object> {
 
   /** For testing */
   private logRead(target: object, prop: string | number | symbol, value: any) {
-    if (!SETTINGS.SERVER_LOG_READ) return;
-    console.log(`state read: ${target}.${String(prop)} => ${value}`);
+    if (!SETTINGS.CLIENT_LOG_READ) return;
+    const targ = SETTINGS.CLIENT_LOG_READ_FULL ? JSON.stringify(target) : target;
+    const val = SETTINGS.CLIENT_LOG_READ_FULL ? JSON.stringify(value) : value;
+    console.log(`state read: ${targ}.${String(prop)} => ${val}`);
   }
 
   /** For testing */
