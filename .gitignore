@@ -4,3 +4,5 @@ dist/
 
 example/client-out/
 example/server-out/
+example-old/client-out/
+example-old/server-out/

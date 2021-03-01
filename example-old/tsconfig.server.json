@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./",
+    "outDir": "./server-out",
+    // "declaration": true,
+  },
+  "exclude": [
+    "./client/**/*.ts",
+  ]
+}
