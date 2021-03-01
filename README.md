@@ -194,7 +194,7 @@ interface State: {
   }
 }
 
-const state: State = {
+const initialState: State = {
   shadeControllers: {
     id1: {
       status: "fine",
@@ -219,8 +219,46 @@ How do you:
 - listen to a controller's shades
 - listen to one of a controller's shades
 
-const state = new ClientState<...>(...);
+const client = new ClientState<...>(...);
 
-state.state.shadeControllers.subscribe()
+const sub1 = client.state.shadeControllers.subscribe(v => { ... });
+const sub2 = client.state.shadeControllers["id1"].subscribe(v => { ... });
+const sub3 = client.state.shadeControllers["id1"].shades.subscribe(v => { ... });
+const sub4 = client.state.shadeControllers["id1"].shades[5].subscribe(v => { ... });
 
+[ "shadeControllers" ]
+[ "shadeControllers", "id1" ]
+[ "shadeControllers", "id1", "shades" ]
+[ "shadeControllers", "id1", "shades", "5" ]
 
+Modifying lighting status - [ "lighting", "status" ]
+- sub1 = not triggered
+- sub2 = not triggered
+- sub3 = not triggered
+- sub4 = not triggered
+
+Modifying controller 2 status - [ "shadeControllers", "id2", "status" ]
+- sub1 = triggered
+- sub2 = not triggered
+- sub3 = not triggered
+- sub4 = not triggered
+
+Modifying controller 1 status - [ "shadeControllers", "id1", "status" ]
+- sub1 = triggered
+- sub2 = triggered
+- sub3 = not triggered
+- sub4 = not triggered
+
+Modifying controller 1 shade 4 status - [ "shadeControllers", "id1", "shades", "4", "status" ]
+- sub1 = triggered
+- sub2 = triggered
+- sub3 = triggered
+- sub4 = not triggered
+
+Modifying controller 1 shade 5 status - [ "shadeControllers", "id1", "shades", "5", "status" ]
+- sub1 = triggered
+- sub2 = triggered
+- sub3 = triggered
+- sub4 = triggered
+
+Does patch path meet all listener segments? (path path may have extra, that doesn't matter)
