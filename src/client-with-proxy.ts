@@ -148,15 +148,15 @@ export class ClientUiState<T extends object> {
           return valueWithSub;
         },
 
-        set: (target, prop, value, receiver) => {
-          const currVal = Reflect.get(target, prop, receiver);
-          const success = Reflect.set(target, prop, value, receiver);
-          this.logChange([...path, prop.toString()], `${currVal} => ${value}`);
-          // this._updated.next(this.doc);
-          // this.sendPatch([...path, prop.toString()], value);
-          // TODO: notify listeners
-          return success;
-        },
+        // set: (target, prop, value, receiver) => {
+        //   const currVal = Reflect.get(target, prop, receiver);
+        //   const success = Reflect.set(target, prop, value, receiver);
+        //   this.logChange([...path, prop.toString()], `${currVal} => ${value}`);
+        //   // this._updated.next(this.doc);
+        //   // this.sendPatch([...path, prop.toString()], value);
+        //   // TODO: notify listeners
+        //   return success;
+        // },
 
       };
       return proxyHandler;
