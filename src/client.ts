@@ -1,8 +1,8 @@
 import { Subscription } from "rxjs";
-import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage } from "./shared";
+import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
 
-const DEFAULT_TARGET_ADDRESS = "ws://localhost:3000/api/yuzu";
-const DEFAULT_RECONNECT_TIMEOUT = 3_000;
+// const DEFAULT_TARGET_ADDRESS = "ws://localhost:3000/api/yuzu";
+// const DEFAULT_RECONNECT_TIMEOUT = 3_000;
 
 export interface ClientUiStateSocketConfig {
   address: string,
@@ -27,8 +27,8 @@ export class ClientUiState<T extends BaseUiStateType> {
 
   private ws: WebSocket | undefined;
   private wsConfig: ClientUiStateSocketConfig = {
-    address: DEFAULT_TARGET_ADDRESS,
-    reconnectTimeout: DEFAULT_RECONNECT_TIMEOUT,
+    address: SETTINGS.CLIENT_DEFAULT_TARGET_ADDRESS,
+    reconnectTimeout: SETTINGS.CLIENT_DEFAULT_RECONNECT_TIMEOUT,
   };
 
   constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
