@@ -297,78 +297,78 @@ export class ClientUiState<T extends object> {
 }
 
 
-// ===== EXAMPLE
+// // ===== EXAMPLE
 
-interface State {
-  aNumber: number;
-  aBool: boolean;
-  aString: string;
-  aNullableNumber: number | null,
-  aList: number[];
-  anObject: {
-    a: number;
-    b: number;
-    c: number;
-  };
-  aNestedObject: {
-    name: string;
-    one: {
-      name: string,
-      two: {
-        name: string,
-        three: number[],
-      },
-    },
-  };
-  keyedObject: {
-    [key: string]: {
-      name: string,
-      status: string,
-    } | undefined,
-  };
-}
+// interface State {
+//   aNumber: number;
+//   aBool: boolean;
+//   aString: string;
+//   aNullableNumber: number | null,
+//   aList: number[];
+//   anObject: {
+//     a: number;
+//     b: number;
+//     c: number;
+//   };
+//   aNestedObject: {
+//     name: string;
+//     one: {
+//       name: string,
+//       two: {
+//         name: string,
+//         three: number[],
+//       },
+//     },
+//   };
+//   keyedObject: {
+//     [key: string]: {
+//       name: string,
+//       status: string,
+//     } | undefined,
+//   };
+// }
 
-const initialState: State = {
-  aNumber: 4,
-  aBool: true,
-  aString: "howdy!",
-  aNullableNumber: 44,
-  aList: [1, 2, 3, 4, 5],
-  anObject: {
-    a: 1,
-    b: 2,
-    c: 3,
-  },
-  aNestedObject: {
-    name: "nest",
-    one: {
-      name: "one",
-      two: {
-        name: "two",
-        three: [1, 2, 3],
-      },
-    },
-  },
-  keyedObject: {},
-};
+// const initialState: State = {
+//   aNumber: 4,
+//   aBool: true,
+//   aString: "howdy!",
+//   aNullableNumber: 44,
+//   aList: [1, 2, 3, 4, 5],
+//   anObject: {
+//     a: 1,
+//     b: 2,
+//     c: 3,
+//   },
+//   aNestedObject: {
+//     name: "nest",
+//     one: {
+//       name: "one",
+//       two: {
+//         name: "two",
+//         three: [1, 2, 3],
+//       },
+//     },
+//   },
+//   keyedObject: {},
+// };
 
-const client = new ClientUiState(initialState);
+// const client = new ClientUiState(initialState);
 
-const sub1 = client.onChange(["aNestedObject"], (v) => {});
+// const sub1 = client.onChange(["aNestedObject"], (v) => {});
 
-const sub2 = client.subbableState.aNumber.subscribe(num => {
-  console.log("num now", num);
-});
+// const sub2 = client.subbableState.aNumber.subscribe(num => {
+//   console.log("num now", num);
+// });
 
-client.subbableState.aNestedObject.subscribe(v => { v.one });
-client.subbableState.aNestedObject.one.subscribe(v => { v.two });
-client.subbableState.aNestedObject.one.two.subscribe(v => { v.three });
-client.subbableState.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
+// client.subbableState.aNestedObject.subscribe(v => { v.one });
+// client.subbableState.aNestedObject.one.subscribe(v => { v.two });
+// client.subbableState.aNestedObject.one.two.subscribe(v => { v.three });
+// client.subbableState.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
 
-client.subbableState.keyedObject.subscribe(val => {
-  const id = "id";
-  if (id in val) {
-    console.log(val[id]?.name);
-    console.log(val[id]?.status);
-  }
-})
+// client.subbableState.keyedObject.subscribe(val => {
+//   const id = "id";
+//   if (id in val) {
+//     console.log(val[id]?.name);
+//     console.log(val[id]?.status);
+//   }
+// });

@@ -154,99 +154,99 @@ export class ServerUiState<T extends object> {
 
 }
 
-// ===== EXAMPLE
+// // ===== EXAMPLE
 
-interface State {
-  aNumber: number;
-  aBool: boolean;
-  aString: string;
-  aNullableNumber: number | null,
-  aList: number[];
-  anObject: {
-    a: number;
-    b: number;
-    c: number;
-  };
-  aNestedObject: {
-    name: string;
-    one: {
-      name: string,
-      two: {
-        name: string,
-        three: number[],
-      },
-    },
-  };
-  keyedObject: {
-    [key: string]: {
-      name: string,
-      status: string,
-    } | undefined,
-  };
-}
+// interface State {
+//   aNumber: number;
+//   aBool: boolean;
+//   aString: string;
+//   aNullableNumber: number | null,
+//   aList: number[];
+//   anObject: {
+//     a: number;
+//     b: number;
+//     c: number;
+//   };
+//   aNestedObject: {
+//     name: string;
+//     one: {
+//       name: string,
+//       two: {
+//         name: string,
+//         three: number[],
+//       },
+//     },
+//   };
+//   keyedObject: {
+//     [key: string]: {
+//       name: string,
+//       status: string,
+//     } | undefined,
+//   };
+// }
 
-const initialState: State = {
-  aNumber: 4,
-  aBool: true,
-  aString: "howdy!",
-  aNullableNumber: 44,
-  aList: [1, 2, 3, 4, 5],
-  anObject: {
-    a: 1,
-    b: 2,
-    c: 3,
-  },
-  aNestedObject: {
-    name: "nest",
-    one: {
-      name: "one",
-      two: {
-        name: "two",
-        three: [1, 2, 3],
-      },
-    },
-  },
-  keyedObject: {},
-};
+// const initialState: State = {
+//   aNumber: 4,
+//   aBool: true,
+//   aString: "howdy!",
+//   aNullableNumber: 44,
+//   aList: [1, 2, 3, 4, 5],
+//   anObject: {
+//     a: 1,
+//     b: 2,
+//     c: 3,
+//   },
+//   aNestedObject: {
+//     name: "nest",
+//     one: {
+//       name: "one",
+//       two: {
+//         name: "two",
+//         three: [1, 2, 3],
+//       },
+//     },
+//   },
+//   keyedObject: {},
+// };
 
-const svr = new ServerUiState<State>(initialState, {
-  serverConfig: { port: 3412 },
-  serverRef: undefined,
-});
-SETTINGS.SERVER_LOG_WRITE = true;
+// const svr = new ServerUiState<State>(initialState, {
+//   serverConfig: { port: 3412 },
+//   serverRef: undefined,
+// });
+// SETTINGS.SERVER_LOG_WRITE = true;
 
-console.log("Edit primitives:");
-svr.state.aBool = false;
-svr.state.aString = "howdy doody neighbourino";
-svr.state.aNumber = 27;
-svr.state.aNullableNumber = null;
-svr.state.aNullableNumber = 27;
+// console.log("Edit primitives:");
+// svr.state.aBool = false;
+// svr.state.aString = "howdy doody neighbourino";
+// svr.state.aNumber = 27;
+// svr.state.aNullableNumber = null;
+// svr.state.aNullableNumber = 27;
 
-console.log("Edit list:");
-svr.state.aList.push(1);
-svr.state.aList.push(2, 3);
-svr.state.aList = [5, 4, 3, 2, 1];
-svr.state.aList = [5, 4, 3, 2, 12];
-svr.state.aList.splice(3);
+// console.log("Edit list:");
+// svr.state.aList.push(1);
+// svr.state.aList.push(2, 3);
+// svr.state.aList = [5, 4, 3, 2, 1];
+// svr.state.aList = [5, 4, 3, 2, 12];
+// svr.state.aList.splice(3);
 
-console.log("Edit object:");
-svr.state.anObject.c = 6;
-svr.state.anObject.a = -1;
+// console.log("Edit object:");
+// svr.state.anObject.c = 6;
+// svr.state.anObject.a = -1;
 
-console.log("Edit nested object:");
-svr.state.aNestedObject.name = "jerry";
-svr.state.aNestedObject.one.name = "something";
-svr.state.aNestedObject.one.two.name = "else";
-svr.state.aNestedObject.one.two.three[5] = 12;
+// console.log("Edit nested object:");
+// svr.state.aNestedObject.name = "jerry";
+// svr.state.aNestedObject.one.name = "something";
+// svr.state.aNestedObject.one.two.name = "else";
+// svr.state.aNestedObject.one.two.three[5] = 12;
 
-console.log("Edit keyed object:");
-svr.state.keyedObject.brian = {
-  name: "brian",
-  status: "fine, thank you",
-};
-svr.state.keyedObject.jeremy = {
-  name: "jeremy",
-  status: "not bad, yourself?",
-};
-svr.state.keyedObject.brian.status = "actually I had better go";
-svr.state.keyedObject.brian = undefined;
+// console.log("Edit keyed object:");
+// svr.state.keyedObject.brian = {
+//   name: "brian",
+//   status: "fine, thank you",
+// };
+// svr.state.keyedObject.jeremy = {
+//   name: "jeremy",
+//   status: "not bad, yourself?",
+// };
+// svr.state.keyedObject.brian.status = "actually I had better go";
+// svr.state.keyedObject.brian = undefined;
