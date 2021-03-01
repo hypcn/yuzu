@@ -1,10 +1,14 @@
 import { Subscription } from "rxjs";
-import { ClientUiStateSocketConfig } from "./client";
-import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
+import { YUZU_SETTINGS as SETTINGS } from "../shared";
+import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage } from "./shared";
 
 // const DEFAULT_TARGET_ADDRESS = "ws://localhost:3000/api/yuzu";
 // const DEFAULT_RECONNECT_TIMEOUT = 3_000;
 
+export interface ClientUiStateSocketConfig {
+  address: string,
+  reconnectTimeout: number,
+}
 
 // TODO: add loading property that's true until an initial payload
 // has been received over the websocket?
@@ -14,7 +18,7 @@ import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage, YUZU_SETTINGS as SETTI
  * 
  * See example web app in Kiwi repo for example usage
  */
-export class ClientUiState_old<T extends BaseUiStateType> {
+export class ClientUiStateObservable<T extends BaseUiStateType> {
 
   /**
    * T is a map of:

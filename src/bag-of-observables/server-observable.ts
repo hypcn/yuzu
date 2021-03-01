@@ -1,6 +1,5 @@
-import { Server } from "http";
 import WebSocket from "ws";
-import { ServerUiStateSocketConfig } from "./server";
+import { ServerUiStateSocketConfig } from "../server";
 import { BaseUiStateType, ClientUiMessage, MsgSendAll, MsgSendUpdate } from "./shared";
 
 const DEFAULT_SERVER_PATH = "/api/yuzu";
@@ -9,7 +8,7 @@ const DEFAULT_SERVER_PATH = "/api/yuzu";
 /**
  * 
  */
-export class ServerUiState_old<T extends BaseUiStateType> {
+export class ServerUiStateObservable<T extends BaseUiStateType> {
 
   private _state: T;
 

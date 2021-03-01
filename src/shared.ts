@@ -1,5 +1,3 @@
-import { BehaviorSubject } from "rxjs";
-
 
 export const YUZU_SETTINGS = {
   SERVER_LOG_READ: false,
@@ -8,30 +6,20 @@ export const YUZU_SETTINGS = {
 
   CLIENT_DEFAULT_TARGET_ADDRESS: "ws://localhost:3000/api/yuzu",
   CLIENT_DEFAULT_RECONNECT_TIMEOUT: 3_000,
+  CLIENT_LOG_READ: false,
+  CLIENT_LOG_READ_FULL: false,
 };
-
-
-/**
- * The default type for the type parameter for both client and server UI state classes.
- * 
- * All shared state definitions MUST NOT implement this interface, as it will break intellisense.
- */
-export interface BaseUiStateType { [key: string]: BehaviorSubject<any> }
-
 
 /**
  * Union type of all messages sent from the client to the server
  */
 export type ClientUiMessage =
-  | MsgReqLoadAll
   | MsgReqComplete;
 
 /**
  * Union type of all messages sent from the server to the client
  */
 export type ServerUiMessage =
-  | MsgSendAll
-  | MsgSendUpdate
   | MsgSendComplete
   | MsgSendPatch;
 
@@ -39,38 +27,8 @@ export type ServerUiMessage =
  * A request from the client for the entire state object.
  * Used on startup and reconnection.
  */
-export interface MsgReqLoadAll {
-  type: "request_load_all",
-}
-
-/**
- * A request from the client for the entire state object.
- * Used on startup and reconnection.
- */
 export interface MsgReqComplete {
   type: "complete",
-}
-
-/**
- * A message from the server containing the current complete UI state.
- */
-export interface MsgSendAll {
-  type: "send_all",
-  state: {
-    key: string,
-    value: any,
-  }[],
-}
-
-/**
- * A message from the server containing the latest value of a single UI state key.
- */
-export interface MsgSendUpdate {
-  type: "send_update",
-  state: {
-    key: string,
-    value: any,
-  },
 }
 
 /**
