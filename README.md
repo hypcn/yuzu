@@ -172,3 +172,55 @@ npm run dev
 ```
 
 This starts a hot-reloading example of both client and server usage, and opens the client in the default browser.
+
+## Dev Notes
+
+Subscriptions:
+
+say the state object is:
+
+```ts
+interface State: {
+  shadeControllers: {
+    [id: string]: {
+      status: string,
+      errors: string[],
+      shades: {
+        status: string,
+        position: number,
+        errors: string[],
+      }[],
+    },
+  }
+}
+
+const state: State = {
+  shadeControllers: {
+    id1: {
+      status: "fine",
+      errors: [],
+      shades: [
+        { status: "fine", position: 50, errors: [] },
+        { status: "fine", position: 50, errors: [] },
+        { status: "error", position: 50, errors: ["overtemp"] },
+      ],
+    },
+    id2: {
+      ...
+    },
+    ...
+  }
+}
+```
+
+How do you:
+- listen to all controllers
+- listen to one controller
+- listen to a controller's shades
+- listen to one of a controller's shades
+
+const state = new ClientState<...>(...);
+
+state.state.shadeControllers.subscribe()
+
+
