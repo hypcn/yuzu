@@ -1,5 +1,5 @@
 import { Server } from "http";
-import { UiStateService } from "./ui-state";
+import { UiStateService } from "./server-ui-state";
 
 const PORT = 3000;
 

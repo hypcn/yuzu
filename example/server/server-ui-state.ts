@@ -22,25 +22,21 @@ export class UiStateService {
   // or receiving method calls from other parts of the application.
 
   updateShadeStatus(id: string, status: ShadeStatus) {
-    const shades = this.uiState.get(UI_STATE.shades);
-    const shade = shades.find(s => s.id === id);
-    if (shade) {
-      Object.assign(shade, status);
+    const shadeIndex = this.uiState.state.shades.findIndex(s => s.id === id);
+    if (shadeIndex > -1) {
+      this.uiState.state.shades[shadeIndex] = status;
     } else {
-      shades.push(status);
+      this.uiState.state.shades.push(status);
     }
-    this.uiState.update(UI_STATE.shades, shades);
   }
 
   updateFixture(id: string, status: FixtureStatus) {
-    const fixtures = this.uiState.get(UI_STATE.fixtures);
-    const fix = fixtures.find(f => f.id === id);
-    if (fix) {
-      Object.assign(fix, status);
+    const fixIndex = this.uiState.state.fixtures.findIndex(f => f.id === id);
+    if (fixIndex > -1) {
+      this.uiState.state.fixtures[fixIndex] = status;
     } else {
-      fixtures.push(status);
+      this.uiState.state.fixtures.push(status);
     }
-    this.uiState.update(UI_STATE.fixtures, fixtures);
   }
 
 }

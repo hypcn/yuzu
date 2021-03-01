@@ -1,16 +1,16 @@
 import m from "mithril";
-import { Subscription } from "rxjs";
-import { state } from "./ui-state";
+import { YuzuSubscription } from "../../src";
+import { state } from "./client-ui-state";
 
 const logSubscriptions = false;
 
 // Example Mithril page component
 export const ExampleStatePage: m.Component<{}, {
-  sub: Subscription,
+  sub: YuzuSubscription,
 }> = {
 
   oninit() {
-    this.sub = new Subscription();
+    this.sub = new YuzuSubscription();
 
     // Listen to changes on a state key
     this.sub.add(state.subbableState.shades.subscribe((shades) => {
@@ -18,8 +18,8 @@ export const ExampleStatePage: m.Component<{}, {
     }));
 
     // Listen to changes on ALL state keys
-    this.sub.add(state.listenAll((key, value) => {
-      logSubscriptions && console.log(`State key "${key}" updated, redrawing...`);
+    this.sub.add(state.onAny((value, path) => {
+      logSubscriptions && console.log(`State key "${path.join(".")}" updated, redrawing...`);
       m.redraw();
     }));
   },
@@ -35,14 +35,14 @@ export const ExampleStatePage: m.Component<{}, {
 
       // Read state using key strings
       m("h2", "Shade Status:"),
-      state.get("shades").map(s => {
+      state.state.shades.map(s => {
         const alertMsg = s.alerts.length > 0 ? s.alerts.join(", ") : "no alerts";
         return m("p", `Shade ${s.id}: ${s.statusName} @${s.position}% (${alertMsg})`);
       }),
 
       // Read state using state keys object
       m("h2", "Fixture Status:"),
-      state.get(UI_STATE.fixtures).map(f => {
+      state.state.fixtures.map(f => {
         const alertMsg = f.alerts.length > 0 ? f.alerts.join(", ") : "no alerts";
         return m("p", `Fixture ${f.id} - brightness ${f.brightness}% - ${alertMsg}`);
       }),
