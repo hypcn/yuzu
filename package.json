@@ -14,6 +14,7 @@
     "dev": "concurrently npm:dev-*",
     "dev-client": "rimraf example/client-out && parcel example/client/index.html -d example/client-out",
     "dev-server": "nodemon",
+    "dev2": "ts-node ./src/server-with-proxy.ts",
     "build": "rimraf dist && tsc -p src/tsconfig.json",
     "watch": "rimraf dist && tsc -p src/tsconfig.json -w",
     "prepublishOnly": "npm run build",
