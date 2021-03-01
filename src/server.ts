@@ -1,6 +1,11 @@
 import { Server } from "http";
+import { inspect } from "util";
 import WebSocket from "ws";
-import { BaseUiStateType, ClientUiMessage, MsgSendAll, MsgSendUpdate } from "./shared";
+import { ClientUiMessage, MsgSendComplete, MsgSendPatch, PatchableValueType, YUZU_SETTINGS as SETTINGS } from "./shared";
+
+// let LOG_GET = false;
+// let LOG_GET_FULL = false;
+// let LOG_SET = true;
 
 const DEFAULT_SERVER_PATH = "/api/yuzu";
 
@@ -15,17 +20,18 @@ export interface ServerUiStateSocketConfig {
   path?: string,
 }
 
-/**
- * 
- */
-export class ServerUiState<T extends BaseUiStateType> {
+export class ServerUiState<T extends object> {
 
   private _state: T;
+  public get state() { return this._state; }
 
   private wss: WebSocket.Server;
 
   constructor(initial: T, config: ServerUiStateSocketConfig) {
+    // ppease the compiler and actually wire up the state
     this._state = initial;
+    this.setState(initial);
+
     if (!config.serverRef && !config.serverConfig) {
       throw new Error(`Either an existing HTTP server or new server config must be supplied`);
     }
@@ -37,6 +43,57 @@ export class ServerUiState<T extends BaseUiStateType> {
       path: config.path || DEFAULT_SERVER_PATH,
     });
     this.listen();
+  }
+
+  /**
+   * Set the value of the internal state object, wrapping it in a proxy handler
+   * to capture reads and writes to and from any nested depth within the state
+   */
+  protected setState(state: T) {
+
+    /**
+     * Funtion that returns the proxy handler wrapping the state object, or object nested within that object.
+     * Returning the proxy handler from a function enables the passing of the current "path" of keys
+     * to the current depth, so handler methods can emit the complete path to the targeted value.
+     */
+    const buildProxyHandler = (path: string[]) => {
+
+      const proxyHandler: ProxyHandler<T> = {
+        get: (target, prop, receiver) => {
+          const value = Reflect.get(target, prop, receiver);
+          this.logRead(target, prop, value);
+          return (typeof value === "object" && value !== null)
+            ? new Proxy(value, buildProxyHandler([...path, prop.toString()]))
+            : value;
+        },
+        set: (target, prop, value, receiver) => {
+          const currVal = Reflect.get(target, prop, receiver);
+          const success = Reflect.set(target, prop, value, receiver);
+          this.logChange([...path, prop.toString()], `${currVal} => ${value}`);
+          // this._updated.next(this.doc);
+          this.sendPatch([...path, prop.toString()], value);
+          return success;
+        },
+      };
+      return proxyHandler;
+    };
+
+    const proxyState = new Proxy(state, buildProxyHandler([]));
+    this._state = proxyState;
+  }
+
+  /** For testing */
+  private logRead(target: object, prop: string | number | symbol, value: any) {
+    if (!SETTINGS.SERVER_LOG_READ) return;
+    const targ = SETTINGS.SERVER_LOG_READ_FULL ? inspect(target, { breakLength: undefined }) : target;
+    const val = SETTINGS.SERVER_LOG_READ_FULL ? inspect(value, { breakLength: undefined }) : value;
+    this.log(`state read: ${targ}.${String(prop)} => ${val}`);
+  }
+
+  /** For testing */
+  private logChange(path: (string | number)[], change: any) {
+    if (!SETTINGS.SERVER_LOG_WRITE) return;
+    this.log("state changed:", path, change);
   }
 
   private log(...msgs: any[]) {
@@ -55,20 +112,31 @@ export class ServerUiState<T extends BaseUiStateType> {
 
       ws.on("close", code => { });
 
-      ws.on("error", err => { });
+      ws.on("error", err => {
+        this.log(`Websocket error: ${err}`);
+      });
     });
   }
 
   private handleMessage(msg: ClientUiMessage, ws: WebSocket) {
 
-    if (msg.type === "request_load_all") {
-      const all: MsgSendAll = {
-        type: "send_all",
-        state: Object.keys(this._state).map(key => ({ key, value: this._state[key].value })),
+    if (msg.type === "complete") {
+      // The proxied state object gets stringified into a POJO, so no cleanup is required
+      const complete: MsgSendComplete = {
+        type: "complete",
+        state: this._state,
       };
-      ws.send(JSON.stringify(all));
+      ws.send(JSON.stringify(complete));
     }
 
+  }
+
+  private sendPatch(path: string[], value: PatchableValueType, /* type: PatchableValueTypeName */) {
+    const msg: MsgSendPatch = {
+      type: "patch",
+      patch: { path, value },
+    };
+    this.send(JSON.stringify(msg));
   }
 
   /**
@@ -84,70 +152,101 @@ export class ServerUiState<T extends BaseUiStateType> {
 
   }
 
-  /**
-   * Read a snapshot of the current state value of the given key
-   */
-  get<TKey extends keyof T>(key: TKey) {
-    return this._state[key].value as T[TKey]["value"];
-  }
-
-  update<TKey extends keyof T>(key: TKey, value: T[TKey]["value"]) {
-    this._state[key].next(value);
-
-    const msg: MsgSendUpdate = {
-      type: "send_update",
-      state: {
-        key: key as string,
-        value,
-      },
-    };
-
-    const msgString = JSON.stringify(msg);
-    this.send(msgString);
-  }
-
-  /**
-   * Apply a partial update of the value with the specified key using Object.assign().
-   * @param key The key of the specified state to update
-   * @param update The partial update object with which to patch the existing state
-   */
-  updateObjectPartial<TKey extends keyof T>(key: TKey, update: Partial<T[TKey]["value"]>) {
-
-    const value = this.get(key);
-    if ((value as object) instanceof Array) {
-      throw new Error(`Cannot apply a partial object update to state with key "${key}", as the state value is an array`);
-    }
-
-    Object.assign(value, update);
-    this.update(key, value);
-  }
-
-  /**
-   * After finding the value for the specified key, the desired element is found using the specified function.
-   * Ths element is then updated to be the given value, of if no matching element was found the new value is appended to the list.
-   * @param key The key of th target state value
-   * @param findFn Function to find the desired element to update
-   * @param newValue The new value to which to set the element
-   */
-  updateArrayElement<TKey extends keyof T, TElem extends T[TKey]["value"][number]>(
-    key: TKey,
-    findFn: (item: TElem, index: number) => boolean,
-    newValue: TElem
-  ) {
-
-    const keyValue = this.get(key);
-    if (!((keyValue as object) instanceof Array)) {
-      throw new Error(`Cannot update element in list for state key "${key}", as the state value is not a list`);
-    }
-    const stateList = keyValue as Array<TElem>;
-
-    const targetState = stateList.find(findFn);
-    if (targetState) {
-      Object.assign(targetState, newValue);
-    } else {
-      stateList.push(newValue);
-    }
-    this.update(key, stateList);
-  }
-
 }
+
+// ===== EXAMPLE
+
+interface State {
+  aNumber: number;
+  aBool: boolean;
+  aString: string;
+  aNullableNumber: number | null,
+  aList: number[];
+  anObject: {
+    a: number;
+    b: number;
+    c: number;
+  };
+  aNestedObject: {
+    name: string;
+    one: {
+      name: string,
+      two: {
+        name: string,
+        three: number[],
+      },
+    },
+  };
+  keyedObject: {
+    [key: string]: {
+      name: string,
+      status: string,
+    } | undefined,
+  };
+}
+
+const initialState: State = {
+  aNumber: 4,
+  aBool: true,
+  aString: "howdy!",
+  aNullableNumber: 44,
+  aList: [1, 2, 3, 4, 5],
+  anObject: {
+    a: 1,
+    b: 2,
+    c: 3,
+  },
+  aNestedObject: {
+    name: "nest",
+    one: {
+      name: "one",
+      two: {
+        name: "two",
+        three: [1, 2, 3],
+      },
+    },
+  },
+  keyedObject: {},
+};
+
+const svr = new ServerUiState<State>(initialState, {
+  serverConfig: { port: 3412 },
+  serverRef: undefined,
+});
+SETTINGS.SERVER_LOG_WRITE = true;
+
+console.log("Edit primitives:");
+svr.state.aBool = false;
+svr.state.aString = "howdy doody neighbourino";
+svr.state.aNumber = 27;
+svr.state.aNullableNumber = null;
+svr.state.aNullableNumber = 27;
+
+console.log("Edit list:");
+svr.state.aList.push(1);
+svr.state.aList.push(2, 3);
+svr.state.aList = [5, 4, 3, 2, 1];
+svr.state.aList = [5, 4, 3, 2, 12];
+svr.state.aList.splice(3);
+
+console.log("Edit object:");
+svr.state.anObject.c = 6;
+svr.state.anObject.a = -1;
+
+console.log("Edit nested object:");
+svr.state.aNestedObject.name = "jerry";
+svr.state.aNestedObject.one.name = "something";
+svr.state.aNestedObject.one.two.name = "else";
+svr.state.aNestedObject.one.two.three[5] = 12;
+
+console.log("Edit keyed object:");
+svr.state.keyedObject.brian = {
+  name: "brian",
+  status: "fine, thank you",
+};
+svr.state.keyedObject.jeremy = {
+  name: "jeremy",
+  status: "not bad, yourself?",
+};
+svr.state.keyedObject.brian.status = "actually I had better go";
+svr.state.keyedObject.brian = undefined;

@@ -1,29 +1,48 @@
-import { Subscription } from "rxjs";
-import { BaseUiStateType, MsgReqLoadAll, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
+import { MsgReqComplete, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
 
-// const DEFAULT_TARGET_ADDRESS = "ws://localhost:3000/api/yuzu";
-// const DEFAULT_RECONNECT_TIMEOUT = 3_000;
+/**
+ * An object containing a subscribe function with a typed listener function as a parameter, returning a subscription
+ */
+type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => Subscription };
+/**
+ * An object returned for a call to a subscribe function, enabling cleanup of the subscription
+ */
+type Subscription = { unsubscribe: () => void };
+/**
+ * A value with a scribe object, or an object with subscribe functions recursively added to every part of the object
+ */
+type Subscribable<T> = T extends object
+  ? { [K in keyof T]: Subscribable<T[K]> } & SubscribeFn<T>
+  : (T & SubscribeFn<T>);
+
+interface StateListener {
+  path: string[],
+  listenerFn: (...args: any[]) => any,
+}
 
 export interface ClientUiStateSocketConfig {
   address: string,
   reconnectTimeout: number,
 }
 
-// TODO: add loading property that's true until an initial payload
-// has been received over the websocket?
+export class ClientUiState<T extends object> {
 
-/**
- * "Bag of Observables"
- * 
- * See example web app in Kiwi repo for example usage
- */
-export class ClientUiState<T extends BaseUiStateType> {
-
-  /**
-   * T is a map of:
-   * [key: string] -> BehaviorSubject<SomeType>
-   */
+  /** Internal state. Do not edit directly, use setState() or patchState() */
   private _state: T;
+  /** The current state */
+  public get state() { return this._state; }
+
+  /** Internal subscribable state. Do not edit directly, use setState() or patchState() */
+  private _subbableState: Subscribable<T>;
+  /**
+   * Subscribable version of the current state.
+   * Any key can be subscribed to, and the listener function will be notified of any update
+   * affecting the targeted value.
+   */
+  public get subbableState() { return this._subbableState; }
+
+  /** The list of listeners each listening to some key in the state tree */
+  private listeners: StateListener[] = [];
 
   private ws: WebSocket | undefined;
   private wsConfig: ClientUiStateSocketConfig = {
@@ -33,12 +52,15 @@ export class ClientUiState<T extends BaseUiStateType> {
 
   constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
     this._state = initial;
+    this._subbableState = this.setState(initial);
 
     this.wsConfig = Object.assign(this.wsConfig, config);
-
     this.connect();
   }
 
+  /**
+   * Set up connection to the specified WS server, and reload whenever the connection is dropped
+   */
   private connect() {
     console.log("Connecting...");
     this.ws = new WebSocket(this.wsConfig.address);
@@ -70,85 +92,275 @@ export class ClientUiState<T extends BaseUiStateType> {
    */
   private handleMessage(msg: ServerUiMessage) {
 
-    if (msg.type === "send_all") {
-      for (const { key, value } of msg.state) {
-        this.update(key as keyof T, value);
-      }
+    if (msg.type === "complete") {
+      this.setState(msg.state as T);
+      this.notifyAllListeners();
     }
 
-    if (msg.type === "send_update") {
-      const { key, value } = msg.state;
-      this.update(key as keyof T, value);
+    if (msg.type === "patch") {
+      const { path, value } = msg.patch;
+      this.patchState(path, value);
+      this.notifyListeners(path);
     }
 
   }
 
   /**
-   * Completely reload the UI state from the server
+   * Set the values of the private state and subscribable state members with the given new value.
+   * The subscribable state member has proxy handlers set up to add subscribe methods recursively
+   * when reading any value.
+   * Returns the subscribable state to satisfy the compiler in the constructor.
+   */
+  private setState(state: T) {
+    this._state = state;
+
+    const buildProxyHandler = (path: string[]) => {
+      const proxyHandler: ProxyHandler<T> = {
+
+        // Find the requested value, then
+        // if the value is an object, wrap it with the proxy handler, then
+        // add the subscribe method to the value before returning it
+        get: (target, prop, receiver) => {
+          let value = Reflect.get(target, prop, receiver);
+          this.logRead(target, prop, value);
+
+          // Ensure object values are recursively proxied
+          if (typeof value === "object" && value !== null) {
+            value = new Proxy(value, buildProxyHandler([...path, prop.toString()]));
+          }
+
+          // Add the subscribe method to whatever the value is
+          const valueWithSub: Subscribable<typeof value> = Object.defineProperty(value, "subscribe", {
+            value: (listener: (val: typeof value) => any) => {
+              // Wire up subscription listener
+              this.listeners.push({
+                path: [...path, prop.toString()],
+                listenerFn: listener,
+              });
+              const sub: Subscription = {
+                unsubscribe: () => {
+                  this.removeListener(listener);
+                },
+              };
+              return sub;
+            },
+          });
+          return valueWithSub;
+        },
+
+        // set: (target, prop, value, receiver) => {
+        //   const currVal = Reflect.get(target, prop, receiver);
+        //   const success = Reflect.set(target, prop, value, receiver);
+        //   this.logChange([...path, prop.toString()], `${currVal} => ${value}`);
+        //   // this._updated.next(this.doc);
+        //   // this.sendPatch([...path, prop.toString()], value);
+        //   // TODO: notify listeners
+        //   return success;
+        // },
+
+      };
+      return proxyHandler;
+    };
+
+    const proxiedState = new Proxy(state, buildProxyHandler([])) as Subscribable<T>;
+    this._subbableState = proxiedState;
+    return this._subbableState;
+  }
+
+  /**
+   * Patch the state and subscribable state members at the specified path
+   */
+  private patchState(path: string[], value: any) {
+
+    let s: any = this._state;
+    let ss: any = this._subbableState;
+    const lastPathIndex = path.length - 1;
+    for (let i = 0; i < lastPathIndex; i++) {
+      const p = path[i];
+      s = s[p];
+      ss = ss[p];
+    }
+    s[path[lastPathIndex]] = value;
+    ss[path[lastPathIndex]] = value;
+
+  }
+
+  /**
+   * Notify all listeners of a change, usually in response to a complete reload
+   */
+  private notifyAllListeners() {
+    this.listeners.forEach(listener => {
+      listener.listenerFn(this.read(listener.path));
+    });
+  }
+
+  /**
+   * Nofify all listeners triggered by an update to the specified path with
+   * the current value at each triggered listener's target path within the state
+   */
+  private notifyListeners(path: string[]) {
+
+    // Each listener must have its path to which it is listening entirely mset by the patched path,
+    // any additional keys patching a greater depth do not matter
+    this.listeners.forEach(listener => {
+      // Abandon loop if path not met
+      for (let i = 0; i < listener.path.length; i++) {
+        if (path[i] !== listener.path[i]) return;
+      }
+
+      // Call the listener function with the latest value at the specified path
+      listener.listenerFn(this.read(listener.path));
+    });
+
+  }
+
+  /**
+   * Remove the state listener from the list by matching the given listener function.
+   * Used to unsubscribe from subscriptions.
+   */
+  private removeListener(listener: (...args: any[]) => any) {
+    this.listeners = this.listeners.filter(l => l.listenerFn !== listener);
+  }
+
+  /** For testing */
+  private logRead(target: object, prop: string | number | symbol, value: any) {
+    if (!SETTINGS.SERVER_LOG_READ) return;
+    console.log(`state read: ${target}.${String(prop)} => ${value}`);
+  }
+
+  /** For testing */
+  private logChange(path: (string | number)[], change: any) {
+    if (!SETTINGS.SERVER_LOG_WRITE) return;
+    console.log("state changed:", path, change);
+  }
+
+  /**
+   * Completely reload the state from the server
    */
   reload() {
-    const msg: MsgReqLoadAll = {
-      type: "request_load_all",
+    const msg: MsgReqComplete = {
+      type: "complete",
     };
     this.ws?.send(JSON.stringify(msg));
   }
 
   /**
-   * Update the value of a state key, notifying any listeners
+   * Read the value at the specified path in the state tree.
+   * Throws an error if the value at the path cannot be read.
    */
-  private update<TKey extends keyof T>(key: TKey, value: T[TKey]["value"]) {
-    this._state[key].next(value);
-  }
+  read(path: string[]) {
 
-  /**
-   * Overwrite the 
-   */
-  private overwrite(newState: { [key in keyof T]: T[keyof T]["value"] }) {
-    for (const key of Object.keys(newState)) {
-      const value = newState[key];
-      this.update(key, value);
+    // Current location while traversing the state tree
+    let curr: Subscribable<any> = this.state;
+
+    for (const p of path) {
+      if (!(p in curr)) {
+        throw new Error(`The path "${path.join(".")}" does not exist in the state tree (key "${p}" was not found)`);
+      }
+      curr = curr[p as keyof typeof curr];
     }
+
+    return curr;
   }
 
   /**
-   * Listen to the state with the specified key, and call the listener function whenever it updates
+   * Listen to changes at the given path.
+   * The path parameter is untyped, but throws an error at runtime if the path does not currently exist.
    */
-  listen<TKey extends keyof T>(key: TKey, listener: (value: T[TKey]["value"]) => any): Subscription {
+  onChange(path: string[], listener: (value: any) => any): Subscription {
 
-    const stateSub = this._state[key].subscribe(value => {
-      const v = value as T[TKey]["value"];
-      listener(v);
+    // Attempt to read the specified location in the tree to check if it exists
+    this.read(path);
+
+    // Specified path exists, wire up subscription
+    this.listeners.push({
+      listenerFn: listener,
+      path: path,
     });
+    const sub: Subscription = {
+      unsubscribe: () => {
+        this.removeListener(listener);
+      },
+    };
 
-    return stateSub;
+    return sub;
   }
-
-  /**
-   * Listen to all keys in the state, and call the listener function whenever any of them update
-   */
-  listenAll(listener: (key: keyof T, value: T[keyof T]["value"]) => any): Subscription {
-    const subscription = new Subscription();
-
-    for (const key of Object.keys(this._state)) {
-      const k = key as keyof T;
-      const s = this.listen(k, (value) => listener(k, value));
-      subscription.add(s);
-    }
-
-    return subscription;
-  }
-
-  /**
-   * Read a snapshot of the current state value of the given key
-   */
-  get<TKey extends keyof T>(key: TKey) {
-    // More info: this value type accessor is an instance of
-    // "indexed access types" also called "lookup types".
-    return this._state[key].value as T[TKey]["value"];
-  }
-  // /**
-  //  * Alias for get method
-  //  */
-  // read<TKey extends keyof T>(key: TKey) { return this.get(key); }
 
 }
+
+
+// ===== EXAMPLE
+
+interface State {
+  aNumber: number;
+  aBool: boolean;
+  aString: string;
+  aNullableNumber: number | null,
+  aList: number[];
+  anObject: {
+    a: number;
+    b: number;
+    c: number;
+  };
+  aNestedObject: {
+    name: string;
+    one: {
+      name: string,
+      two: {
+        name: string,
+        three: number[],
+      },
+    },
+  };
+  keyedObject: {
+    [key: string]: {
+      name: string,
+      status: string,
+    } | undefined,
+  };
+}
+
+const initialState: State = {
+  aNumber: 4,
+  aBool: true,
+  aString: "howdy!",
+  aNullableNumber: 44,
+  aList: [1, 2, 3, 4, 5],
+  anObject: {
+    a: 1,
+    b: 2,
+    c: 3,
+  },
+  aNestedObject: {
+    name: "nest",
+    one: {
+      name: "one",
+      two: {
+        name: "two",
+        three: [1, 2, 3],
+      },
+    },
+  },
+  keyedObject: {},
+};
+
+const client = new ClientUiState(initialState);
+
+const sub1 = client.onChange(["aNestedObject"], (v) => {});
+
+const sub2 = client.subbableState.aNumber.subscribe(num => {
+  console.log("num now", num);
+});
+
+client.subbableState.aNestedObject.subscribe(v => { v.one });
+client.subbableState.aNestedObject.one.subscribe(v => { v.two });
+client.subbableState.aNestedObject.one.two.subscribe(v => { v.three });
+client.subbableState.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
+
+client.subbableState.keyedObject.subscribe(val => {
+  const id = "id";
+  if (id in val) {
+    console.log(val[id]?.name);
+    console.log(val[id]?.status);
+  }
+})
