@@ -169,7 +169,13 @@ interface State {
   };
   aNestedObject: {
     name: string;
-    one: any;
+    one: {
+      name: string,
+      two: {
+        name: string,
+        three: number[],
+      },
+    },
   };
   keyedObject: {
     [key: string]: {
