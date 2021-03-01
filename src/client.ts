@@ -133,13 +133,14 @@ export class ClientUiState<T extends object> {
           }
 
           // Add the subscribe method to whatever the value is
-          const valueWithSub: Subscribable<typeof value> = Object.defineProperty(value, "subscribe", {
-            value: (listener: StateListenerFn) => {
-              // Wire up subscription listener
-              const sub = this.subscribe(listener, [...path, prop.toString()]);
-              return sub;
-            },
-          });
+          const valueWithSub: Subscribable<typeof value> = (!value.hasOwnProperty("subscribe"))
+          ? Object.defineProperty(value, "subscribe", {
+              value: (listener: StateListenerFn) => {
+                // Wire up subscription listener
+                const sub = this.subscribe(listener, [...path, prop.toString()]);
+                return sub;
+              },
+            }) : value;
           return valueWithSub;
         },
 
