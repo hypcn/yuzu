@@ -1,4 +1,3 @@
-import { BehaviorSubject } from "rxjs";
 
 export interface ShadeStatus {
   id: string,
@@ -12,14 +11,14 @@ export interface FixtureStatus {
   alerts: string[],
 }
 
-/** UI state object used to initialise both client and server */
-export const INITIAL_UI_STATE = {
-  shades: new BehaviorSubject<ShadeStatus[]>([]),
-  fixtures: new BehaviorSubject<FixtureStatus[]>([]),
-} as const;
+/** Definition of the type of the shared UI state */
+export interface UiState {
+  shades: ShadeStatus[],
+  fixtures: FixtureStatus[],
+}
 
-/** Optional UI state keys for easy refactoring. */
-export const UI_STATE = {
-  shades: "shades",
-  fixtures: "fixtures",
-} as const;
+/** UI state object used to initialise both client and server */
+export const INITIAL_UI_STATE: UiState = {
+  shades: [],
+  fixtures: [],
+};

@@ -1,16 +1,16 @@
 import { Server } from "http";
-import { ServerUiState } from "../../src";
+import { ServerUiState_old } from "../../src";
 import { FixtureStatus, INITIAL_UI_STATE, ShadeStatus, UI_STATE } from "../shared/ui-state-definition";
 
 export class UiStateService {
 
-  private uiState: ServerUiState<typeof INITIAL_UI_STATE>;
+  private uiState: ServerUiState_old<typeof INITIAL_UI_STATE>;
 
   constructor(opts: {
     server: Server | undefined,
     port: number | undefined,
   }) {
-    this.uiState = new ServerUiState(INITIAL_UI_STATE, {
+    this.uiState = new ServerUiState_old(INITIAL_UI_STATE, {
       serverRef: opts.server,
       serverConfig: opts.port ? {
         port: opts.port,

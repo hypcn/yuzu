@@ -1,6 +1,6 @@
 import { Server } from "http";
 import { ServerUiState } from "../../src";
-import { FixtureStatus, INITIAL_UI_STATE, ShadeStatus, UI_STATE } from "../shared/ui-state-definition";
+import { FixtureStatus, INITIAL_UI_STATE, ShadeStatus } from "../shared/ui-state-definition";
 
 export class UiStateService {
 

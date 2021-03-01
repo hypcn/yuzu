@@ -1,6 +1,5 @@
 import m from "mithril";
 import { Subscription } from "rxjs";
-import { UI_STATE } from "../shared/ui-state-definition";
 import { state } from "./ui-state";
 
 const logSubscriptions = false;
@@ -14,7 +13,7 @@ export const ExampleStatePage: m.Component<{}, {
     this.sub = new Subscription();
 
     // Listen to changes on a state key
-    this.sub.add(state.listen("shades", (shades) => {
+    this.sub.add(state.subbableState.shades.subscribe((shades) => {
       logSubscriptions && console.log("shades updated")
     }));
 
