@@ -21,7 +21,8 @@ export type ClientUiMessage =
  */
 export type ServerUiMessage =
   | MsgSendComplete
-  | MsgSendPatch;
+  | MsgSendPatch
+  | MsgSendPatchBatch;
 
 /**
  * A request from the client for the entire state object.
@@ -53,4 +54,12 @@ export interface MsgSendPatch {
     value: PatchableValueType,
     // type: PatchableValueTypeName,
   },
+}
+
+export interface MsgSendPatchBatch {
+  type: "patch-batch",
+  patches: {
+    path: string[],
+    value: PatchableValueType,
+  }[],
 }

@@ -106,6 +106,13 @@ export class ClientUiState<T extends object> {
       this.notifyListeners(path);
     }
 
+    if (msg.type === "patch-batch") {
+      for (const patch of msg.patches) {
+        this.patchState(patch.path, patch.value);
+      }
+      this.notifyListenersOnce(msg.patches.map(p => p.path));
+    }
+
   }
 
   /**
@@ -221,6 +228,31 @@ export class ClientUiState<T extends object> {
       // Call the listener function with the latest value at the specified path
       listener.listenerFn(this.readPath(listener.path), path);
     });
+
+  }
+
+  /**
+   * 
+   */
+  private notifyListenersOnce(paths: string[][]) {
+
+    // TODO: deduplicate parameter list
+
+    // Find the deduplicated list of triggered subscription listeners
+    // using method from notifyListeners
+    const triggered = this.listeners.filter(listener => {
+      return paths.some(path => {
+        for (let i = 0; i < listener.path.length; i++) {
+          if (path[i] !== listener.path[i]) return false;
+        }
+        return true;
+      });
+    });
+
+    // Call the listener functions with the latest values at the specified paths
+    for (const { listenerFn, path } of triggered) {
+      listenerFn(this.readPath(path), path);
+    }
 
   }
 
