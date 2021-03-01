@@ -1,13 +1,11 @@
 import { MsgReqComplete, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
+import { YuzuSubscription } from "./subscription";
 
 /**
  * An object containing a subscribe function with a typed listener function as a parameter, returning a subscription
  */
-type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => Subscription };
-/**
- * An object returned for a call to a subscribe function, enabling cleanup of the subscription
- */
-type Subscription = { unsubscribe: () => void };
+type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => YuzuSubscription };
+
 /**
  * A value with a scribe object, or an object with subscribe functions recursively added to every part of the object
  */
@@ -15,9 +13,14 @@ type Subscribable<T> = T extends object
   ? { [K in keyof T]: Subscribable<T[K]> } & SubscribeFn<T>
   : (T & SubscribeFn<T>);
 
+/**
+ * A function supplied when subscribing to a state key, called when the target key updates
+ */
+type StateListenerFn = (value: any, updatedPath: string[]) => void;
+
 interface StateListener {
   path: string[],
-  listenerFn: (...args: any[]) => any,
+  listenerFn: StateListenerFn,
 }
 
 export interface ClientUiStateSocketConfig {
@@ -29,7 +32,7 @@ export class ClientUiState<T extends object> {
 
   /** Internal state. Do not edit directly, use setState() or patchState() */
   private _state: T;
-  /** The current state */
+  /** The current state. Readonly */
   public get state() { return this._state; }
 
   /** Internal subscribable state. Do not edit directly, use setState() or patchState() */
@@ -131,17 +134,9 @@ export class ClientUiState<T extends object> {
 
           // Add the subscribe method to whatever the value is
           const valueWithSub: Subscribable<typeof value> = Object.defineProperty(value, "subscribe", {
-            value: (listener: (val: typeof value) => any) => {
+            value: (listener: StateListenerFn) => {
               // Wire up subscription listener
-              this.listeners.push({
-                path: [...path, prop.toString()],
-                listenerFn: listener,
-              });
-              const sub: Subscription = {
-                unsubscribe: () => {
-                  this.removeListener(listener);
-                },
-              };
+              const sub = this.subscribe(listener, [...path, prop.toString()]);
               return sub;
             },
           });
@@ -186,11 +181,25 @@ export class ClientUiState<T extends object> {
   }
 
   /**
+   * Add the given listener function to the list of listeners, returning a subscription
+   */
+  private subscribe(listenerFn: StateListenerFn, path: string[]): YuzuSubscription {
+    this.listeners.push({
+      path,
+      listenerFn,
+    });
+    const sub = new YuzuSubscription(() => {
+      this.removeListener(listenerFn);
+    });
+    return sub;
+  }
+
+  /**
    * Notify all listeners of a change, usually in response to a complete reload
    */
   private notifyAllListeners() {
     this.listeners.forEach(listener => {
-      listener.listenerFn(this.read(listener.path));
+      listener.listenerFn(this.readPath(listener.path), []);
     });
   }
 
@@ -209,7 +218,7 @@ export class ClientUiState<T extends object> {
       }
 
       // Call the listener function with the latest value at the specified path
-      listener.listenerFn(this.read(listener.path));
+      listener.listenerFn(this.readPath(listener.path), path);
     });
 
   }
@@ -218,7 +227,7 @@ export class ClientUiState<T extends object> {
    * Remove the state listener from the list by matching the given listener function.
    * Used to unsubscribe from subscriptions.
    */
-  private removeListener(listener: (...args: any[]) => any) {
+  private removeListener(listener: StateListenerFn) {
     this.listeners = this.listeners.filter(l => l.listenerFn !== listener);
   }
 
@@ -248,7 +257,7 @@ export class ClientUiState<T extends object> {
    * Read the value at the specified path in the state tree.
    * Throws an error if the value at the path cannot be read.
    */
-  read(path: string[]) {
+  readPath(path: string[]) {
 
     // Current location while traversing the state tree
     let curr: Subscribable<any> = this.state;
@@ -267,23 +276,22 @@ export class ClientUiState<T extends object> {
    * Listen to changes at the given path.
    * The path parameter is untyped, but throws an error at runtime if the path does not currently exist.
    */
-  onChange(path: string[], listener: (value: any) => any): Subscription {
+  onChange(path: string[], listener: StateListenerFn): YuzuSubscription {
 
     // Attempt to read the specified location in the tree to check if it exists
-    this.read(path);
+    this.readPath(path);
 
     // Specified path exists, wire up subscription
-    this.listeners.push({
-      listenerFn: listener,
-      path: path,
-    });
-    const sub: Subscription = {
-      unsubscribe: () => {
-        this.removeListener(listener);
-      },
-    };
+    const sub = this.subscribe(listener, path);
 
     return sub;
+  }
+
+  /**
+   * Subscribe to all changes to the state
+   */
+  onAny(listener: StateListenerFn): YuzuSubscription {
+    return this.onChange([], listener);
   }
 
 }
