@@ -40,13 +40,13 @@ export class ClientUiState<T extends object> {
   public get state() { return this._state; }
 
   /** Internal subscribable state. Do not edit directly, use setState() or patchState() */
-  private _subState: Subscribable<T>;
+  private _subscribableState: Subscribable<T>;
   /**
    * Subscribable version of the current state.
    * Any key can be subscribed to, and the listener function will be notified of any update
    * affecting the targeted value (or its children).
    */
-  public get subState() { return this._subState; }
+  public get state$() { return this._subscribableState; }
 
   /** The list of listeners each listening to some key in the state tree */
   private listeners: StateListener[] = [];
@@ -59,7 +59,7 @@ export class ClientUiState<T extends object> {
 
   constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
     this._state = initial;
-    this._subState = this.setState(initial);
+    this._subscribableState = this.setState(initial);
 
     this.wsConfig = Object.assign(this.wsConfig, config);
     this.connect();
@@ -170,8 +170,8 @@ export class ClientUiState<T extends object> {
     };
 
     const proxiedState = new Proxy(state, buildProxyHandler([])) as Subscribable<T>;
-    this._subState = proxiedState;
-    return this._subState;
+    this._subscribableState = proxiedState;
+    return this._subscribableState;
   }
 
   /**
@@ -180,7 +180,7 @@ export class ClientUiState<T extends object> {
   private patchState(path: string[], value: any) {
 
     let s: any = this._state;
-    let ss: any = this._subState;
+    let ss: any = this._subscribableState;
     const lastPathIndex = path.length - 1;
     for (let i = 0; i < lastPathIndex; i++) {
       const p = path[i];
@@ -395,16 +395,16 @@ export class ClientUiState<T extends object> {
 
 // const sub1 = client.onChange(["aNestedObject"], (v) => {});
 
-// const sub2 = client.subState.aNumber.subscribe(num => {
+// const sub2 = client.state$.aNumber.subscribe(num => {
 //   console.log("num now", num);
 // });
 
-// client.subState.aNestedObject.subscribe(v => { v.one });
-// client.subState.aNestedObject.one.subscribe(v => { v.two });
-// client.subState.aNestedObject.one.two.subscribe(v => { v.three });
-// client.subState.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
+// client.state$.aNestedObject.subscribe(v => { v.one });
+// client.state$.aNestedObject.one.subscribe(v => { v.two });
+// client.state$.aNestedObject.one.two.subscribe(v => { v.three });
+// client.state$.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
 
-// client.subState.keyedObject.subscribe(val => {
+// client.state$.keyedObject.subscribe(val => {
 //   const id = "id";
 //   if (id in val) {
 //     console.log(val[id]?.name);

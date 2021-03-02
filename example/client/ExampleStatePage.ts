@@ -13,7 +13,7 @@ export const ExampleStatePage: m.Component<{}, {
     this.sub = new Subscription();
 
     // Listen to changes on a state key
-    this.sub.add(state.subState.shades.subscribe((shades) => {
+    this.sub.add(state.state$.shades.subscribe((shades) => {
       logSubscriptions && console.log("shades updated")
     }));
 
