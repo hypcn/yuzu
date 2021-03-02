@@ -7,7 +7,7 @@ import { Subscription } from "./subscription";
 type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => Subscription };
 
 /**
- * A value with a scribe object, or an object with subscribe functions recursively added to every part of the object
+ * A value with a subscribe object, or an object with subscribe functions recursively added to every part of the object
  */
 type Subscribable<T> = T extends object
   ? { [K in keyof T]: Subscribable<T[K]> } & SubscribeFn<T>
@@ -18,6 +18,10 @@ type Subscribable<T> = T extends object
  */
 type StateListenerFn = (value: any, updatedPath: string[]) => void;
 
+/**
+ * A combination of a listener function, and the state path it is listening to.
+ * Used to store subscriptions.
+ */
 interface StateListener {
   path: string[],
   listenerFn: StateListenerFn,
