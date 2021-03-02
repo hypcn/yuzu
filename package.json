@@ -23,8 +23,10 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "rxjs": "^6.6.3",
     "ws": "^7.4.3"
+  },
+  "peerDependencies": {
+    "rxjs": "^6.6.3"
   },
   "devDependencies": {
     "@types/mithril": "^2.0.6",
