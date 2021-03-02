@@ -36,17 +36,17 @@ export class ClientUiState<T extends object> {
 
   /** Internal state. Do not edit directly, use setState() or patchState() */
   private _state: T;
-  /** The current state. Readonly */
+  /** The current state. Readonly, and cannot be subscribed to. */
   public get state() { return this._state; }
 
   /** Internal subscribable state. Do not edit directly, use setState() or patchState() */
-  private _subbableState: Subscribable<T>;
+  private _subState: Subscribable<T>;
   /**
    * Subscribable version of the current state.
    * Any key can be subscribed to, and the listener function will be notified of any update
-   * affecting the targeted value.
+   * affecting the targeted value (or its children).
    */
-  public get subbableState() { return this._subbableState; }
+  public get subState() { return this._subState; }
 
   /** The list of listeners each listening to some key in the state tree */
   private listeners: StateListener[] = [];
@@ -59,7 +59,7 @@ export class ClientUiState<T extends object> {
 
   constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
     this._state = initial;
-    this._subbableState = this.setState(initial);
+    this._subState = this.setState(initial);
 
     this.wsConfig = Object.assign(this.wsConfig, config);
     this.connect();
@@ -170,8 +170,8 @@ export class ClientUiState<T extends object> {
     };
 
     const proxiedState = new Proxy(state, buildProxyHandler([])) as Subscribable<T>;
-    this._subbableState = proxiedState;
-    return this._subbableState;
+    this._subState = proxiedState;
+    return this._subState;
   }
 
   /**
@@ -180,7 +180,7 @@ export class ClientUiState<T extends object> {
   private patchState(path: string[], value: any) {
 
     let s: any = this._state;
-    let ss: any = this._subbableState;
+    let ss: any = this._subState;
     const lastPathIndex = path.length - 1;
     for (let i = 0; i < lastPathIndex; i++) {
       const p = path[i];
@@ -395,16 +395,16 @@ export class ClientUiState<T extends object> {
 
 // const sub1 = client.onChange(["aNestedObject"], (v) => {});
 
-// const sub2 = client.subbableState.aNumber.subscribe(num => {
+// const sub2 = client.subState.aNumber.subscribe(num => {
 //   console.log("num now", num);
 // });
 
-// client.subbableState.aNestedObject.subscribe(v => { v.one });
-// client.subbableState.aNestedObject.one.subscribe(v => { v.two });
-// client.subbableState.aNestedObject.one.two.subscribe(v => { v.three });
-// client.subbableState.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
+// client.subState.aNestedObject.subscribe(v => { v.one });
+// client.subState.aNestedObject.one.subscribe(v => { v.two });
+// client.subState.aNestedObject.one.two.subscribe(v => { v.three });
+// client.subState.aNestedObject.one.two.three.subscribe(v => { v.map(elem => elem) });
 
-// client.subbableState.keyedObject.subscribe(val => {
+// client.subState.keyedObject.subscribe(val => {
 //   const id = "id";
 //   if (id in val) {
 //     console.log(val[id]?.name);

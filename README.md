@@ -141,7 +141,7 @@ export const ExampleStatePage: m.Component<{}, {
 
     // Listen to changes on the subscribable state property
     // Every object and primitive has a .subscribe() method added for precise listening
-    this.sub.add(uiState.subbableState.shades.subscribe((shades) => console.log("shades updated")));
+    this.sub.add(uiState.subState.shades.subscribe((shades) => console.log("shades updated")));
 
     // Listen to changes on ALL state keys
     this.sub.add(uiState.onAny((value, path) => {
@@ -160,7 +160,7 @@ export const ExampleStatePage: m.Component<{}, {
       m("h1", "UI State Example Page"),
 
       // Read state using the .state property
-      // The .subbableState property has the same values, but reading the property ensures that .subscribe()
+      // The .subState property has the same values, but reading the property ensures that .subscribe()
       // functions are set up, so can slightly decrease performance if subscribing is not immediately needed
       m("h2", "Shade Status:"),
       uiState.state.shades.map(s => {
@@ -191,7 +191,7 @@ In the client, any object at any depth in the state stree can be subscribed to. 
 Simple example:
 
 ```ts
-const sub = clientUi.subbableState.shades.controllers["id1"].subscribe(val => { ... });
+const sub = clientUi.subState.shades.controllers["id1"].subscribe(val => { ... });
 ```
 
 This is a subscription to the controller with id `id1` on the `controllers` object in the `shades` object in the state tree. The "path" for this listener is:
@@ -333,13 +333,13 @@ And listened to from the client like so:
 
 ```ts
 // Receives all updates
-uiState.subbableState.transientDevices.subscribe(
+uiState.subState.transientDevices.subscribe(
   (allDevicesObj: { [id: string]: DeviceState | undefined }) => { ... },
 );
 // Receives all updates, on the last update the parameter is undefined
-uiState.subbableState.transientDevices["device1"].subscribe(device: DeviceState | undefined => { ... });
+uiState.subState.transientDevices["device1"].subscribe(device: DeviceState | undefined => { ... });
 // Receives one update, when the status is explicitly updated
-uiState.subbableState.transientDevices["device1"].status.subscribe(status: string => { ... });
+uiState.subState.transientDevices["device1"].status.subscribe(status: string => { ... });
 ```
 
 ### Arrays in State Tree
