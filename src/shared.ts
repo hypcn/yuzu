@@ -43,23 +43,21 @@ export interface MsgSendComplete {
 export type PatchableValueType = string | number | boolean | object | null | undefined;
 // export type PatchableValueTypeName = "string" | "number" | "boolean" | "object" | "null" | "undefined";
 
+export type StatePatch = {
+  path: string[],
+  value: PatchableValueType,
+};
+
 /**
  * A message from the server containing a patch to a certain path in the state object.
  * The patched value may be a value or an object
  */
 export interface MsgSendPatch {
   type: "patch",
-  patch: {
-    path: string[],
-    value: PatchableValueType,
-    // type: PatchableValueTypeName,
-  },
+  patch: StatePatch,
 }
 
 export interface MsgSendPatchBatch {
   type: "patch-batch",
-  patches: {
-    path: string[],
-    value: PatchableValueType,
-  }[],
+  patches: StatePatch[],
 }

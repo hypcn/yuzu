@@ -1,7 +1,7 @@
 import { Server } from "http";
 import { inspect } from "util";
 import WebSocket from "ws";
-import { ClientUiMessage, MsgSendComplete, MsgSendPatch, PatchableValueType, YUZU_SETTINGS as SETTINGS } from "./shared";
+import { ClientUiMessage, MsgSendComplete, MsgSendPatch, MsgSendPatchBatch, PatchableValueType, StatePatch, YUZU_SETTINGS as SETTINGS } from "./shared";
 
 // let LOG_GET = false;
 // let LOG_GET_FULL = false;
@@ -9,7 +9,7 @@ import { ClientUiMessage, MsgSendComplete, MsgSendPatch, PatchableValueType, YUZ
 
 const DEFAULT_SERVER_PATH = "/api/yuzu";
 
-export interface ServerUiStateSocketConfig {
+export interface ServerUiStateConfig {
   /** Reference to existing HTTP server */
   serverRef: Server | undefined,
   /** Config options to create new server */
@@ -18,6 +18,8 @@ export interface ServerUiStateSocketConfig {
   } | undefined,
   /** Path at which to listen for incoming connections */
   path?: string,
+  /**  */
+  batchDelay?: number,
 }
 
 export class ServerUiState<T extends object> {
@@ -27,7 +29,11 @@ export class ServerUiState<T extends object> {
 
   private wss: WebSocket.Server;
 
-  constructor(initial: T, config: ServerUiStateSocketConfig) {
+  private patchBatch: StatePatch[] = [];
+  private batchDelay: number = 0;
+  private batchTimeout: NodeJS.Timeout | undefined = undefined;
+
+  constructor(initial: T, config: ServerUiStateConfig) {
     // ppease the compiler and actually wire up the state
     this._state = initial;
     this.setState(initial);
@@ -43,6 +49,8 @@ export class ServerUiState<T extends object> {
       path: config.path || DEFAULT_SERVER_PATH,
     });
     this.listen();
+
+    if (config.batchDelay && config.batchDelay > 0) this.batchDelay = config.batchDelay;
   }
 
   /**
@@ -131,12 +139,36 @@ export class ServerUiState<T extends object> {
 
   }
 
-  private sendPatch(path: string[], value: PatchableValueType, /* type: PatchableValueTypeName */) {
-    const msg: MsgSendPatch = {
-      type: "patch",
-      patch: { path, value },
+  private sendPatch(path: string[], value: PatchableValueType) {
+    if (this.batchDelay <= 0) {
+      const msg: MsgSendPatch = {
+        type: "patch",
+        patch: { path, value },
+      };
+      this.send(JSON.stringify(msg));
+    } else {
+      this.patchBatch.push({ path, value });
+      if (this.batchTimeout === undefined) {
+        this.batchTimeout = setTimeout(() => {
+          this.sendBatch();
+        }, this.batchDelay);
+      }
+    }
+  }
+
+  private sendBatch() {
+    if (this.patchBatch.length < 1) return;
+
+    const msg: MsgSendPatchBatch = {
+      type: "patch-batch",
+      patches: this.patchBatch,
     };
-    this.send(JSON.stringify(msg));
+    const messageString = JSON.stringify(msg);
+
+    this.patchBatch = [];
+    this.batchTimeout = undefined;
+
+    this.send(messageString);
   }
 
   /**

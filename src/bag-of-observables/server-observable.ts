@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { ServerUiStateSocketConfig } from "../server";
+import { ServerUiStateConfig } from "../server";
 import { BaseUiStateType, ClientUiMessage, MsgSendAll, MsgSendUpdate } from "./shared";
 
 const DEFAULT_SERVER_PATH = "/api/yuzu";
@@ -14,7 +14,7 @@ export class ServerUiStateObservable<T extends BaseUiStateType> {
 
   private wss: WebSocket.Server;
 
-  constructor(initial: T, config: ServerUiStateSocketConfig) {
+  constructor(initial: T, config: ServerUiStateConfig) {
     this._state = initial;
     if (!config.serverRef && !config.serverConfig) {
       throw new Error(`Either an existing HTTP server or new server config must be supplied`);
