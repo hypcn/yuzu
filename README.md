@@ -21,6 +21,8 @@ Typescript type definitions are included.
 
 Create the shared initial state definition object. This specifies the type of the state objects maintained in both the client and server and provides default values.
 
+> Important: The state definition object must be serialisable as JSON.
+
 Example:
 
 ```ts
@@ -338,6 +340,27 @@ uiState.subbableState.transientDevices.subscribe(
 uiState.subbableState.transientDevices["device1"].subscribe(device: DeviceState | undefined => { ... });
 // Receives one update, when the status is explicitly updated
 uiState.subbableState.transientDevices["device1"].status.subscribe(status: string => { ... });
+```
+
+### Arrays in State Tree
+
+Arrays are fully supported, as are all the mutation methods (e.g. `push`, `splice`, etc.).
+
+However, due to the way they are updated internally, updates can end up being relatively "chatty" compared to objects.
+
+For example, the push operation below:
+
+```ts
+server.state.myArray = [1, 2, 3, 4, 5];
+server.state.myArray.push(10, 11);
+```
+
+results in three patches:
+
+```
+[ "myArray", "5" ]: undefined => 10
+[ "myArray", "6" ]: undefined => 11
+[ "myArray", "length" ]: 5 => 7
 ```
 
 ## Development
