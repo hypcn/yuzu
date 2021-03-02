@@ -178,24 +178,39 @@ export const ExampleStatePage: m.Component<{}, {
 
 ## Considerations
 
+### Subscription Paths
 
+In the client, any object at any depth in the state stree can be subscribed to. This includes all objects, arrays, and primitives.
 
-## Development
+- When the entire state tree is reloaded (for example, on network reconnection) all listeners are notified.
 
-```sh
-git clone https://github.com/hypcn/yuzu
-cd yuzu
-npm i
-npm run dev
+- When the state tree is patched, only the listeners whose "path" is completely satisfied by the updated "path" are notified. Any "extra" segments in the updated path do not matter.
+
+Simple example:
+
+```ts
+const sub = clientUi.subbableState.shades.controllers["id1"].subscribe(val => { ... });
 ```
 
-This starts a hot-reloading example of both client and server usage, and opens the client in the default browser.
+This is a subscription to the controller with id `id1` on the `controllers` object in the `shades` object in the state tree. The "path" for this listener is:
 
-## Dev Notes
+`[ "shades", "controllers", "id1" ]`
 
-Subscriptions:
+Server Update | Updated Path | Subscription Notified
+--- | --- | ---
+`server.state.lighting.fixtures.push({ ... });` | [ "lighting", "fixtures" ] | No
+`server.state.shades.controllers.push({ ... });` | [ "shades", "controllers" ] | No
+`server.state.shades.controllers["id5"] = { ... };` | [ "shades", "controllers", "id5" ] | No
+`server.state.shades.controllers["id5"].status = "Error";` | [ "shades", "controllers", "id5", "status" ] | No
+`server.state.shades.controllers["id1"] = { ... };` | [ "shades", "controllers", "id1" ] | Yes ✓
+`server.state.shades.controllers["id1"].status = "Error";` | [ "shades", "controllers", "id1", "status" ] | Yes ✓
+`server.state.shades.controllers["id1"].shades[5].status = "Error";` | [ "shades", "controllers", "id1", "shades", "status", "5" ] | Yes ✓
+`server.state.shades.controllers["id1"] = undefined;` | [ "shades", "controllers", "id1" ] | Yes ✓ (caution)
+`delete server.state.shades.controllers["id1"];` | (None, no message sent) | No (no patch message sent)
 
-say the state object is:
+**Worked Example:**
+
+Given the following state interface definition:
 
 ```ts
 interface State: {
@@ -209,7 +224,8 @@ interface State: {
         errors: string[],
       }[],
     },
-  }
+  },
+  ...
 }
 
 const initialState: State = {
@@ -227,16 +243,14 @@ const initialState: State = {
       ...
     },
     ...
-  }
-}
+  },
+  ...
+};
 ```
 
-How do you:
-- listen to all controllers
-- listen to one controller
-- listen to a controller's shades
-- listen to one of a controller's shades
+And the client subscriptions:
 
+```ts
 const client = new ClientState<...>(...);
 
 const sub1 = client.state.shadeControllers.subscribe(v => { ... });
@@ -244,39 +258,95 @@ const sub2 = client.state.shadeControllers["id1"].subscribe(v => { ... });
 const sub3 = client.state.shadeControllers["id1"].shades.subscribe(v => { ... });
 const sub4 = client.state.shadeControllers["id1"].shades[5].subscribe(v => { ... });
 
-[ "shadeControllers" ]
-[ "shadeControllers", "id1" ]
-[ "shadeControllers", "id1", "shades" ]
-[ "shadeControllers", "id1", "shades", "5" ]
+// path1 - [ "shadeControllers" ]
+// path2 - [ "shadeControllers", "id1" ]
+// path3 - [ "shadeControllers", "id1", "shades" ]
+// path4 - [ "shadeControllers", "id1", "shades", "5" ]
+```
 
-Modifying lighting status - [ "lighting", "status" ]
+Here are the results of modifying the values at the given paths:
+
+Modifying lighting status - updated path: `[ "lighting", "status" ]`
 - sub1 = not triggered
 - sub2 = not triggered
 - sub3 = not triggered
 - sub4 = not triggered
 
-Modifying controller 2 status - [ "shadeControllers", "id2", "status" ]
+Modifying controller 2 status - updated path: `[ "shadeControllers", "id2", "status" ]`
 - sub1 = triggered
 - sub2 = not triggered
 - sub3 = not triggered
 - sub4 = not triggered
 
-Modifying controller 1 status - [ "shadeControllers", "id1", "status" ]
+Modifying controller 1 status - updated path: `[ "shadeControllers", "id1", "status" ]`
 - sub1 = triggered
 - sub2 = triggered
 - sub3 = not triggered
 - sub4 = not triggered
 
-Modifying controller 1 shade 4 status - [ "shadeControllers", "id1", "shades", "4", "status" ]
+Modifying controller 1 shade 4 status - updated path: `[ "shadeControllers", "id1", "shades", "4", "status" ]`
 - sub1 = triggered
 - sub2 = triggered
 - sub3 = triggered
 - sub4 = not triggered
 
-Modifying controller 1 shade 5 status - [ "shadeControllers", "id1", "shades", "5", "status" ]
+Modifying controller 1 shade 5 status - updated path: `[ "shadeControllers", "id1", "shades", "5", "status" ]`
 - sub1 = triggered
 - sub2 = triggered
 - sub3 = triggered
 - sub4 = triggered
 
-Does patch path meet all listener segments? (path path may have extra, that doesn't matter)
+### Nullable State Keys
+
+It may be the case that state keys be dynamically created/destroyed, for example for transient pieces of equipment or pieces of state. It may be desireable to access the state regarding these by some key or ID.
+
+As shown above, the state object can be defined as such to support this case:
+
+```ts
+export interface UiState {
+  ...
+  transientDevices: {
+    [id: string]: DeviceState | undefined,
+  },
+  ...
+}
+export interface DeviceState {
+  status: string,
+  ...
+}
+```
+
+Note the union type.
+
+This can be written to from the server like so:
+
+```ts
+uiState.state.transientDevices["device1"] = { ... }; // Set device to initial value
+uiState.state.transientDevices["device1"] = { ... }; // Overwrite device value
+uiState.state.transientDevices["device1"].status = " ... "; // Update single key in device
+uiState.state.transientDevices["device1"] = undefined; // Remove device
+```
+
+And listened to from the client like so:
+
+```ts
+// Receives all updates
+uiState.subbableState.transientDevices.subscribe(
+  (allDevicesObj: { [id: string]: DeviceState | undefined }) => { ... },
+);
+// Receives all updates, on the last update the parameter is undefined
+uiState.subbableState.transientDevices["device1"].subscribe(device: DeviceState | undefined => { ... });
+// Receives one update, when the status is explicitly updated
+uiState.subbableState.transientDevices["device1"].status.subscribe(status: string => { ... });
+```
+
+## Development
+
+```sh
+git clone https://github.com/hypcn/yuzu
+cd yuzu
+npm i
+npm run dev
+```
+
+This starts a hot-reloading example of both client and server usage, and opens the client in the default browser.
