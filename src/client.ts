@@ -1,10 +1,10 @@
 import { MsgReqComplete, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
-import { YuzuSubscription } from "./subscription";
+import { Subscription } from "./subscription";
 
 /**
  * An object containing a subscribe function with a typed listener function as a parameter, returning a subscription
  */
-type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => YuzuSubscription };
+type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => Subscription };
 
 /**
  * A value with a scribe object, or an object with subscribe functions recursively added to every part of the object
@@ -191,12 +191,12 @@ export class ClientUiState<T extends object> {
   /**
    * Add the given listener function to the list of listeners, returning a subscription
    */
-  private subscribe(listenerFn: StateListenerFn, path: string[]): YuzuSubscription {
+  private subscribe(listenerFn: StateListenerFn, path: string[]): Subscription {
     this.listeners.push({
       path,
       listenerFn,
     });
-    const sub = new YuzuSubscription(() => {
+    const sub = new Subscription(() => {
       this.removeListener(listenerFn);
     });
     return sub;
@@ -311,7 +311,7 @@ export class ClientUiState<T extends object> {
    * Listen to changes at the given path.
    * The path parameter is untyped, but throws an error at runtime if the path does not currently exist.
    */
-  onChange(path: string[], listener: StateListenerFn): YuzuSubscription {
+  onChange(path: string[], listener: StateListenerFn): Subscription {
 
     // Attempt to read the specified location in the tree to check if it exists
     this.readPath(path);
@@ -325,7 +325,7 @@ export class ClientUiState<T extends object> {
   /**
    * Subscribe to all changes to the state
    */
-  onAny(listener: StateListenerFn): YuzuSubscription {
+  onAny(listener: StateListenerFn): Subscription {
     return this.onChange([], listener);
   }
 

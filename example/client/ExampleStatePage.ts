@@ -1,16 +1,16 @@
 import m from "mithril";
-import { YuzuSubscription } from "../../src";
+import { Subscription } from "../../src";
 import { state } from "./client-ui-state";
 
 const logSubscriptions = false;
 
 // Example Mithril page component
 export const ExampleStatePage: m.Component<{}, {
-  sub: YuzuSubscription,
+  sub: Subscription,
 }> = {
 
   oninit() {
-    this.sub = new YuzuSubscription();
+    this.sub = new Subscription();
 
     // Listen to changes on a state key
     this.sub.add(state.subbableState.shades.subscribe((shades) => {
