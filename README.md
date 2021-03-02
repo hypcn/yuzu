@@ -26,8 +26,6 @@ Example:
 ```ts
 // shared/ui-state.ts
 
-import { BehaviorSubject } from "rxjs";
-
 export interface ShadeStatus {
   id: string,
   statusName: string,
@@ -40,22 +38,32 @@ export interface FixtureStatus {
   alerts: string[],
 }
 
-/** UI state object used to initialise both client and server */
+/**
+ * UI state object used to initialise both client and server.
+ * EITHER explicitly define key types and initial values in a constant...
+ */
 export const INITIAL_UI_STATE = {
-  shades: new BehaviorSubject<ShadeStatus[]>([]),
-  fixtures: new BehaviorSubject<FixtureStatus[]>([]),
+  shades: [] as ShadeStatus[],
+  fixtures: [] as FixtureStatus[],
 } as const;
 
-/** Optional UI state keys for easy refactoring. */
-export const UI_STATE = {
-  shades: "shades",
-  fixtures: "fixtures",
-} as const;
+/** ... OR define a separate interface... */
+export interface UiState = {
+  shades: ShadeStatus[],
+  fixtures: FixtureStatus[],
+};
+/** ... and constant. */
+export const INITIAL_UI_STATE: UiState = {
+  shades: [],
+  fixtures: [],
+};
 ```
 
 ### Server Implementation
 
-Implement the UI state server. An existing HTTP server must be provided.
+Implement the UI state server.
+
+Either provide an existing HTTP server, or define a port on which to listen with a new server.
 
 Example:
 
@@ -64,14 +72,17 @@ Example:
 
 import { ServerUiState } from "@hypericon/yuzu";
 import { Server } from "http";
-import { INITIAL_UI_STATE, UI_STATE, ShadeStatus } from "../../ui-state";
+import { INITIAL_UI_STATE, UiState, ShadeStatus } from "../../ui-state";
 
 export class UiStateService {
 
   private uiState: ServerUiState;
 
-  constructor(server: Server) {
-    this.uiState = new ServerUiState(INITIAL_UI_STATE, { httpServer: server });
+  constructor(opts: { server: Server | undefined, port: number | undefined }) {
+    this.uiState = new ServerUiState(INITIAL_UI_STATE, {
+      serverRef: opts.server,
+      serverConfig: opts.port ? { port: opts.port } : undefined,
+    });
 
     // Example random position every 1,000 ms
     setTimeout(() => {
@@ -82,21 +93,22 @@ export class UiStateService {
         alerts: [],
       };
       this.updateShadeStatus("shadeID", status);
-    }, 1000);
+    }, 1_000);
   }
 
   // State could be updated by listening to other parts of the application,
   // or receiving method calls from other parts of the application.
 
   updateShadeStatus(id: string, status: ShadeStatus) {
-    const shades = this.uiState.get(UI_STATE.shades);
-    const shade = shades.find(s => s.id === id);
-    if (shade) {
-      Object.assign(shade, status);
+    const shadeIndex = this.uiState.state.shades.findIndex(s => s.id === id);
+
+    // Simply interact with the state property of the ServerUiState object,
+    // and all updates will be sent to all connected clients.
+    if (shadeIndex > -1) {
+      this.uiState.state.shades[shadeIndex] = status;
     } else {
-      shades.push(status);
+      this.uiState.state.shades.push(status);
     }
-    this.uiState.update(UI_STATE.shades, shades);
   }
 }
 ```
@@ -110,13 +122,12 @@ Example Mithril page component:
 ```ts
 // client/pages/ExampleStatePage.ts
 
-import { ClientUiState } from "@hypericon/yuzu";
+import { ClientUiState, Subscription } from "@hypericon/yuzu";
 import m from "mithril";
-import { Subscription } from "rxjs";
 import { UI_STATE, INITIAL_UI_STATE } from "../../ui-state";
 
 // Client UI state singleton reference
-const state = new ClientUiState(INITIAL_UI_STATE);
+const uiState = new ClientUiState(INITIAL_UI_STATE);
 
 // Example Mithril page component
 export const ExampleStatePage: m.Component<{}, {
@@ -126,12 +137,13 @@ export const ExampleStatePage: m.Component<{}, {
   oninit() {
     this.sub = new Subscription();
 
-    // Listen to changes on a state key
-    this.sub.add(state.listen("shades", (shades) => console.log("shades updated")));
+    // Listen to changes on the subscribable state property
+    // Every object and primitive has a .subscribe() method added for precise listening
+    this.sub.add(uiState.subbableState.shades.subscribe((shades) => console.log("shades updated")));
 
     // Listen to changes on ALL state keys
-    this.sub.add(state.listenAll((key, value) => {
-      console.log(`State key "${key}" updated, redrawing...`);
+    this.sub.add(uiState.onAny((value, path) => {
+      console.log(`State path "${path.join(".")}" updated, redrawing...`);
       m.redraw();
     }));
   },
@@ -145,22 +157,28 @@ export const ExampleStatePage: m.Component<{}, {
     return m("", [
       m("h1", "UI State Example Page"),
 
-      // Read state using key strings
+      // Read state using the .state property
+      // The .subbableState property has the same values, but reading the property ensures that .subscribe()
+      // functions are set up, so can slightly decrease performance if subscribing is not immediately needed
       m("h2", "Shade Status:"),
-      state.get("shades").map(s => {
+      uiState.state.shades.map(s => {
         const alertMsg = s.alerts.length > 0 ? s.alerts.join(", ") : "no alerts";
         return m("p", `Shade ${s.id}: ${s.statusName} @${s.position}% (${alertMsg})`);
       }),
 
-      // (Optional) Read state using state keys object
-      m("p", `Fixture ABC123 alerts: ${state.get(UI_STATE.fixtures)
-                                           .filter(f => f.id === "abc123")
-                                           .map(f => `${f.alerts}`)}`),
+      // Read state using the .state property
+      m("p", `Fixture ABC123 alerts: ${uiState.state.fixtures
+                                        .filter(f => f.id === "abc123")
+                                        .map(f => `${f.alerts}`)}`),
     ]);
   }
 
 };
 ```
+
+## Considerations
+
+
 
 ## Development
 
