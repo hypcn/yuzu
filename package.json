@@ -12,11 +12,8 @@
   },
   "scripts": {
     "dev": "concurrently npm:dev-*",
-    "dev-client": "rimraf example/client-out && parcel example/client/index.html -d example/client-out",
+    "dev-client": "rimraf example/client-out && vite example/client",
     "dev-server": "nodemon",
-    "dev_old": "concurrently npm:dev_old-*",
-    "dev_old-client": "rimraf example-old/client-out && parcel example-old/client/index.html -d example-old/client-out",
-    "dev_old-server": "nodemon --config nodemon.old.ts",
     "build": "rimraf dist && tsc -p src/tsconfig.json",
     "watch": "rimraf dist && tsc -p src/tsconfig.json -w",
     "prepublishOnly": "npm run build",
@@ -26,7 +23,7 @@
     "ws": "^7.4.3"
   },
   "peerDependencies": {
-    "rxjs": "^6.6.3"
+    "rxjs": "^7.8.0"
   },
   "devDependencies": {
     "@types/mithril": "^2.0.6",
@@ -35,11 +32,11 @@
     "concurrently": "^5.3.0",
     "mithril": "^2.0.4",
     "nodemon": "^2.0.7",
-    "parcel-bundler": "^1.12.4",
     "rimraf": "^3.0.2",
     "ts-node": "^9.1.1",
     "tsconfig-paths": "^3.9.0",
-    "typescript": "^4.1.5"
+    "typescript": "^4.1.5",
+    "vite": "^4.0.4"
   },
   "files": [
     "dist"

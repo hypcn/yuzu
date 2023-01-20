@@ -7,7 +7,7 @@ import { Subscription } from "./subscription";
 type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => Subscription };
 
 /**
- * A value with a subscribe object, or an object with subscribe functions recursively added to every part of the object
+ * A value with a subscribe method, or an object with subscribe functions recursively added to every part of the object
  */
 type Subscribable<T> = T extends object
   ? { [K in keyof T]: Subscribable<T[K]> } & SubscribeFn<T>

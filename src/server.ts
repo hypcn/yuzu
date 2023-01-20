@@ -70,9 +70,11 @@ export class ServerUiState<T extends object> {
         get: (target, prop, receiver) => {
           const value = Reflect.get(target, prop, receiver);
           this.logRead(target, prop, value);
-          return (typeof value === "object" && value !== null)
-            ? new Proxy(value, buildProxyHandler([...path, prop.toString()]))
-            : value;
+          if (typeof value === "object" && value !== null) {
+            const proxyHandler = buildProxyHandler([...path, prop.toString()]);
+            return new Proxy(value as object, proxyHandler);
+          }
+          return value;
         },
         set: (target, prop, value, receiver) => {
           const currVal = Reflect.get(target, prop, receiver);
