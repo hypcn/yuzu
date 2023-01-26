@@ -182,7 +182,7 @@ export const ExampleStatePage: m.Component<{}, {
 
 ### Subscription Paths
 
-In the client, any object at any depth in the state stree can be subscribed to. This includes all objects, arrays, and primitives.
+In the client, any object at any depth in the state stree can be subscribed to. This includes all objects and arrays, but not primitives.
 
 - When the entire state tree is reloaded (for example, on network reconnection) all listeners are notified.
 

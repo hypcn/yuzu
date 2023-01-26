@@ -9,9 +9,10 @@ type SubscribeFn<T> = { subscribe: (listener: (value: T) => void) => Subscriptio
 /**
  * A value with a subscribe method, or an object with subscribe functions recursively added to every part of the object
  */
-type Subscribable<T> = T extends object
-  ? { [K in keyof T]: Subscribable<T[K]> } & SubscribeFn<T>
-  : (T & SubscribeFn<T>);
+type SubscribableOrPrimitive<T> = T extends object
+  ? { [K in keyof T]: SubscribableOrPrimitive<T[K]> } & SubscribeFn<T>
+  // : (T & SubscribeFn<T>);
+  : (T);
 
 /**
  * A function supplied when subscribing to a state key, called when the target key updates
@@ -40,7 +41,7 @@ export class ClientUiState<T extends object> {
   public get state() { return this._state; }
 
   /** Internal subscribable state. Do not edit directly, use setState() or patchState() */
-  private _subscribableState: Subscribable<T>;
+  private _subscribableState: SubscribableOrPrimitive<T>;
   /**
    * Subscribable version of the current state.
    * Any key can be subscribed to, and the listener function will be notified of any update
@@ -140,19 +141,35 @@ export class ClientUiState<T extends object> {
 
           // Ensure object values are recursively proxied
           if (typeof value === "object" && value !== null) {
-            value = new Proxy(value, buildProxyHandler([...path, prop.toString()]));
+            const objectValue = new Proxy(value, buildProxyHandler([...path, prop.toString()]) as any); // TODO: any is naughty, fix it
+
+            // Add the subscribe method to whatever the value is
+            if (!value.hasOwnProperty("subscribe")) {
+              Object.defineProperty(objectValue, "subscribe", {
+                value: (listener: StateListenerFn) => {
+                  // Wire up subscription listener
+                  const sub = this.subscribe(listener, [...path, prop.toString()]);
+                  return sub;
+                },
+              });
+            }
+
+            return objectValue;
+          } else {
+            return value;
           }
 
-          // Add the subscribe method to whatever the value is
-          const valueWithSub: Subscribable<typeof value> = (!value.hasOwnProperty("subscribe"))
-          ? Object.defineProperty(value, "subscribe", {
-              value: (listener: StateListenerFn) => {
-                // Wire up subscription listener
-                const sub = this.subscribe(listener, [...path, prop.toString()]);
-                return sub;
-              },
-            }) : value;
-          return valueWithSub;
+          // // Add the subscribe method to whatever the value is
+          // const valueWithSub: SubscribableOrPrimitive<typeof value> = (!value.hasOwnProperty("subscribe"))
+          //   ? Object.defineProperty(value, "subscribe", {
+          //     value: (listener: StateListenerFn) => {
+          //       // Wire up subscription listener
+          //       const sub = this.subscribe(listener, [...path, prop.toString()]);
+          //       return sub;
+          //     },
+          //   })
+          //   : value;
+          // return valueWithSub;
         },
 
         // set: (target, prop, value, receiver) => {
@@ -169,7 +186,7 @@ export class ClientUiState<T extends object> {
       return proxyHandler;
     };
 
-    const proxiedState = new Proxy(state, buildProxyHandler([])) as Subscribable<T>;
+    const proxiedState = new Proxy(state, buildProxyHandler([])) as SubscribableOrPrimitive<T>;
     this._subscribableState = proxiedState;
     return this._subscribableState;
   }
@@ -299,7 +316,7 @@ export class ClientUiState<T extends object> {
   readPath(path: string[]) {
 
     // Current location while traversing the state tree
-    let curr: Subscribable<any> = this.state;
+    let curr: SubscribableOrPrimitive<any> = this.state;
 
     for (const p of path) {
       if (!(p in curr)) {

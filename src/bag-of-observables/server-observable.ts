@@ -105,7 +105,7 @@ export class ServerUiStateObservable<T extends BaseUiStateType> {
 
     const value = this.get(key);
     if ((value as object) instanceof Array) {
-      throw new Error(`Cannot apply a partial object update to state with key "${key}", as the state value is an array`);
+      throw new Error(`Cannot apply a partial object update to state with key "${String(key)}", as the state value is an array`);
     }
 
     Object.assign(value, update);
@@ -127,7 +127,7 @@ export class ServerUiStateObservable<T extends BaseUiStateType> {
 
     const keyValue = this.get(key);
     if (!((keyValue as object) instanceof Array)) {
-      throw new Error(`Cannot update element in list for state key "${key}", as the state value is not a list`);
+      throw new Error(`Cannot update element in list for state key "${String(key)}", as the state value is not a list`);
     }
     const stateList = keyValue as Array<TElem>;
 
