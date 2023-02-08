@@ -43,10 +43,11 @@ export class ServerUiState<T extends object> {
     }
 
     const existingServer = Boolean(config.serverRef);
+    const path = config.path || DEFAULT_SERVER_PATH
     this.wss = new WebSocket.Server({
       server: existingServer ? config.serverRef : undefined,
       port: existingServer ? undefined : config.serverConfig?.port,
-      path: config.path || DEFAULT_SERVER_PATH,
+      path: path.startsWith("/") ? path : `/${path}`,
     });
     this.listen();
 
