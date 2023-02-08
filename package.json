@@ -1,11 +1,12 @@
 {
   "name": "@hypericon/yuzu",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Library to push UI State updates across connected clients in CI applications",
   "main": "dist/index.js",
   "author": "Ed Johnson, Hypericon Ltd",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "homepage": "https://github.com/hypcn/yuzu#readme",
+  "private": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hypcn/yuzu.git"
