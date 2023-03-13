@@ -137,7 +137,9 @@ export class ServerUiState<T extends object> {
         type: "complete",
         state: this._state,
       };
-      ws.send(JSON.stringify(complete));
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(complete));
+      }
     }
 
   }
@@ -180,9 +182,11 @@ export class ServerUiState<T extends object> {
   private send(message: string) {
 
     this.wss.clients.forEach(client => {
-      client.send(message, err => {
-        if (err !== undefined) this.log("UI State Error:", err?.message);
-      });
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message, err => {
+          if (err !== undefined) this.log("UI State Error:", err?.message);
+        });
+      }
     });
 
   }
