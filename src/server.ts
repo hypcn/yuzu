@@ -20,6 +20,37 @@ export interface ServerUiStateConfig {
   path?: string,
   /**  */
   batchDelay?: number,
+  /** Optionally specify the logging levels for the default logger */
+  logLevels?: YuzuLoggerLevel[],
+  /** Optionally replace the default logger */
+  logger?: YuzuLogger,
+}
+
+export interface YuzuLogger {
+  debug: (...msgs: any[]) => any,
+  log: (...msgs: any[]) => any,
+  warn: (...msgs: any[]) => any,
+  error: (...msgs: any[]) => any,
+}
+
+export type YuzuLoggerLevel = "debug" | "log" | "warn" | "error";
+
+class DefaultLogger implements YuzuLogger {
+  constructor(
+    private logLevels: YuzuLoggerLevel[] = ["error", "debug", "log"],
+  ) {}
+  debug(...msgs: any[]) {
+    if (this.logLevels.includes("debug")) console.debug(msgs);
+  }
+  log(...msgs: any[]) {
+    if (this.logLevels.includes("log")) console.log(msgs);
+  }
+  warn(...msgs: any[]) {
+    if (this.logLevels.includes("warn")) console.warn(msgs);
+  }
+  error(...msgs: any[]) {
+    if (this.logLevels.includes("error")) console.error(msgs);
+  }
 }
 
 export class ServerUiState<T extends object> {
@@ -33,8 +64,17 @@ export class ServerUiState<T extends object> {
   private batchDelay: number = 0;
   private batchTimeout: NodeJS.Timeout | undefined = undefined;
 
+  private logger: YuzuLogger;
+
   constructor(initial: T, config: ServerUiStateConfig) {
-    // ppease the compiler and actually wire up the state
+
+    if (config.logger !== undefined) {
+      this.logger = config.logger;
+    } else {
+      this.logger = new DefaultLogger(config.logLevels);
+    }
+
+    // Appease the compiler and actually wire up the state
     this._state = initial;
     this.setState(initial);
 
@@ -52,6 +92,7 @@ export class ServerUiState<T extends object> {
     this.listen();
 
     if (config.batchDelay && config.batchDelay > 0) this.batchDelay = config.batchDelay;
+
   }
 
   /**
@@ -98,33 +139,35 @@ export class ServerUiState<T extends object> {
     if (!SETTINGS.SERVER_LOG_READ) return;
     const targ = SETTINGS.SERVER_LOG_READ_FULL ? inspect(target, { breakLength: undefined }) : target;
     const val = SETTINGS.SERVER_LOG_READ_FULL ? inspect(value, { breakLength: undefined }) : value;
-    this.log(`state read: ${targ}.${String(prop)} => ${val}`);
+    this.logger.debug(`state read: ${targ}.${String(prop)} => ${val}`);
   }
 
   /** For testing */
   private logChange(path: (string | number)[], change: any) {
     if (!SETTINGS.SERVER_LOG_WRITE) return;
-    this.log("state changed:", path, change);
+    this.logger.debug("state changed:", path, change);
   }
 
-  private log(...msgs: any[]) {
-    console.log(...msgs);
-  }
+  // private log(...msgs: any[]) {
+  //   console.log(...msgs);
+  // }
 
   private listen() {
     this.wss.on("connection", (ws, req) => {
-      this.log(`New connection from ${req.headers.origin}`);
+      this.logger.log(`New connection from ${req.headers.origin}`);
 
       ws.on("message", message => {
-        this.log(`Message from ${req.headers.origin}: ${message}`);
+        this.logger.log(`Message from ${req.headers.origin}: ${message}`);
         const msg = JSON.parse(message.toString()) as ClientUiMessage;
         this.handleMessage(msg, ws);
       });
 
-      ws.on("close", code => { });
+      ws.on("close", code => {
+        this.logger.log(`Connection closed: ${req.headers.origin} code: ${code}`);
+      });
 
       ws.on("error", err => {
-        this.log(`Websocket error: ${err}`);
+        this.logger.warn(`Websocket error: ${err}`);
       });
     });
   }
@@ -150,6 +193,7 @@ export class ServerUiState<T extends object> {
         type: "patch",
         patch: { path, value },
       };
+      this.logger.debug(`Sending patch to: ${msg.patch.path}`);
       this.send(JSON.stringify(msg));
     } else {
       this.patchBatch.push({ path, value });
@@ -173,6 +217,7 @@ export class ServerUiState<T extends object> {
     this.patchBatch = [];
     this.batchTimeout = undefined;
 
+    this.logger.debug(`Sending batch of ${msg.patches.length} patches`);
     this.send(messageString);
   }
 
@@ -184,7 +229,9 @@ export class ServerUiState<T extends object> {
     this.wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message, err => {
-          if (err !== undefined) this.log("UI State Error:", err?.message);
+          if (err !== undefined) {
+            this.logger.error("UI State Error:", err?.message);
+          }
         });
       }
     });
