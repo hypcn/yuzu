@@ -167,7 +167,7 @@ export class ServerUiState<T extends object> {
       });
 
       ws.on("error", err => {
-        this.logger.warn(`Websocket error: ${err}`);
+        this.logger.error(`Websocket error:`, err);
       });
     });
   }
@@ -230,7 +230,7 @@ export class ServerUiState<T extends object> {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message, err => {
           if (err !== undefined) {
-            this.logger.error("UI State Error:", err?.message);
+            this.logger.error("Error sending message:", err?.message);
           }
         });
       }
