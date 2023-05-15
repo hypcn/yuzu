@@ -194,6 +194,18 @@ export class ClientUiState<T extends object> {
     };
 
     const proxiedState = new Proxy(state, buildProxyHandler([])) as SubscribableOrPrimitive<T>;
+
+    // The `subscribe()` function doesn't get added to the root, so add it now
+    if (!proxiedState.hasOwnProperty("subscribe")) {
+      Object.defineProperty(proxiedState, "subscribe", {
+        value: (listener: StateListenerFn) => {
+          // Wire up subscription listener for the root
+          const sub = this.subscribe(listener, []);
+          return sub;
+        },
+      });
+    }
+
     this._subscribableState = proxiedState;
     return this._subscribableState;
   }
