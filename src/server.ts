@@ -16,9 +16,15 @@ export interface ServerUiStateConfig {
   serverConfig: {
     port: number,
   } | undefined,
-  /** Path at which to listen for incoming connections */
+  /**
+   * Path at which to listen for incoming connections
+   * @default "/api/yuzu"
+   */
   path?: string,
-  /**  */
+  /**
+   * 
+   * @default 0
+   */
   batchDelay?: number,
   /** Optionally specify the logging levels for the default logger */
   logLevels?: YuzuLoggerLevel[],
