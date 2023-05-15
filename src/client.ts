@@ -53,6 +53,8 @@ export class ClientUiState<T extends object> {
    * Subscribable version of the current state.
    * Any key can be subscribed to, and the listener function will be notified of any update
    * affecting the targeted value (or its children).
+   * 
+   * Note: the `state$` property itself cnanot be subscribed to, use `onAny(...)` instead
    */
   public get state$() { return this._subscribableState; }
 
