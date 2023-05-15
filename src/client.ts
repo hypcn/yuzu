@@ -29,7 +29,14 @@ interface StateListener {
 }
 
 export interface ClientUiStateSocketConfig {
+  /**
+   * The full websocket address to connect to
+   * @default "ws://localhost:3000/api/yuzu"
+   */
   address: string,
+  /**
+   * @default 3000
+   */
   reconnectTimeout: number,
 }
 
