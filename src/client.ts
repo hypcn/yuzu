@@ -48,7 +48,7 @@ export class ClientUiState<T extends object> {
   public get state() { return this._state; }
 
   /** Internal subscribable state. Do not edit directly, use setState() or patchState() */
-  private _subscribableState: SubscribableOrPrimitive<T>;
+  private _subscribableState: Omit<SubscribableOrPrimitive<T>, "subscribe">;
   /**
    * Subscribable version of the current state.
    * Any key can be subscribed to, and the listener function will be notified of any update
@@ -195,16 +195,16 @@ export class ClientUiState<T extends object> {
 
     const proxiedState = new Proxy(state, buildProxyHandler([])) as SubscribableOrPrimitive<T>;
 
-    // The `subscribe()` function doesn't get added to the root, so add it now
-    if (!proxiedState.hasOwnProperty("subscribe")) {
-      Object.defineProperty(proxiedState, "subscribe", {
-        value: (listener: StateListenerFn) => {
-          // Wire up subscription listener for the root
-          const sub = this.subscribe(listener, []);
-          return sub;
-        },
-      });
-    }
+    // // The `subscribe()` function doesn't get added to the root, so add it now
+    // if (!proxiedState.hasOwnProperty("subscribe")) {
+    //   Object.defineProperty(proxiedState, "subscribe", {
+    //     value: (listener: StateListenerFn) => {
+    //       // Wire up subscription listener for the root
+    //       const sub = this.subscribe(listener, []);
+    //       return sub;
+    //     },
+    //   });
+    // }
 
     this._subscribableState = proxiedState;
     return this._subscribableState;
