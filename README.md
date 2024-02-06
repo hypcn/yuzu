@@ -17,6 +17,14 @@ Install the library:
 
 Typescript type definitions are included.
 
+### Breaking Changes
+
+0.4.0
+
+- `readPath` renamed to `readPathExisting` (`readPathOptional` added)
+- `onChange` renamed to `onChangeExisting` (`onChangeOptional` added)
+- `Subscription` renamed to `YuzuSubscription`
+
 ### Shared Definition
 
 Create the shared initial state definition object. This specifies the type of the state objects maintained in both the client and server and provides default values.

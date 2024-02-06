@@ -3,7 +3,7 @@
  * An object returned for a call to a subscribe function, enabling cleanup of the subscription.
  * Named to avoid collision with rxjs Subscription, but the functionality is very similar
  */
-export class Subscription {
+export class YuzuSubscription {
 
   /**
    * The list of functions to call when unsubscribing this subscription object
@@ -21,7 +21,7 @@ export class Subscription {
     }
   }
 
-  add(...subscriptions: Subscription[]) {
+  add(...subscriptions: YuzuSubscription[]) {
     for (const sub of subscriptions) {
       this._unsubFunctions.push(...sub._unsubFunctions);
     }
