@@ -68,7 +68,7 @@ export class ServerUiStateObservable<T extends BaseUiStateType> {
 
     this.wss.clients.forEach(client => {
       client.send(message, err => {
-        if (err !== undefined) this.log("UI State Error:", err?.message);
+        if (err) this.log("UI State Error:", err?.message);
       });
     });
 

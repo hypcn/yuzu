@@ -235,7 +235,7 @@ export class ServerUiState<T extends object> {
     this.wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message, err => {
-          if (err !== undefined) {
+          if (err) {
             this.logger.error("Error sending message:", err?.message);
           }
         });
