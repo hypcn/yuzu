@@ -1,3 +1,4 @@
+import { BehaviorSubject } from "rxjs";
 import { MsgReqComplete, ServerUiMessage, YUZU_SETTINGS as SETTINGS } from "./shared";
 import { YuzuSubscription } from "./subscription";
 
@@ -67,6 +68,12 @@ export class ClientUiState<T extends object> {
     reconnectTimeout: SETTINGS.CLIENT_DEFAULT_RECONNECT_TIMEOUT,
   };
 
+  private _connected = new BehaviorSubject<boolean>(false);
+  /** Observable emitting when the connection state of the client changes */
+  public connected$ = this._connected.asObservable();
+  /** Whether the client is currently connected to a Yuzu server */
+  get isConnected() { return this._connected.value; }
+
   constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
     this._state = initial;
     this._subscribableState = this.setState(initial);
@@ -85,11 +92,13 @@ export class ClientUiState<T extends object> {
     this.ws.addEventListener("open", (ev) => {
       console.log("socket open");
       this.reload();
+      this._connected.next(true);
     });
 
     this.ws.addEventListener("close", (ev) => {
       setTimeout(() => {
         console.log("Socket closed, reconnecting...");
+        this._connected.next(true);
         this.connect();
       }, this.wsConfig.reconnectTimeout);
     });
