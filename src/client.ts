@@ -98,7 +98,7 @@ export class ClientUiState<T extends object> {
     this.ws.addEventListener("close", (ev) => {
       setTimeout(() => {
         console.log("Socket closed, reconnecting...");
-        this._connected.next(true);
+        this._connected.next(false);
         this.connect();
       }, this.wsConfig.reconnectTimeout);
     });
