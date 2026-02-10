@@ -6,7 +6,7 @@ const DEFAULT_SERVER_PATH = "/api/yuzu";
 
 
 /**
- * 
+ *
  */
 export class ServerUiStateObservable<T extends BaseUiStateType> {
 
@@ -122,7 +122,7 @@ export class ServerUiStateObservable<T extends BaseUiStateType> {
   updateArrayElement<TKey extends keyof T, TElem extends T[TKey]["value"][number]>(
     key: TKey,
     findFn: (item: TElem, index: number) => boolean,
-    newValue: TElem
+    newValue: TElem,
   ) {
 
     const keyValue = this.get(key);

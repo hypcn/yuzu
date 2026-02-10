@@ -22,7 +22,7 @@ export interface ServerUiStateConfig {
    */
   path?: string,
   /**
-   * 
+   *
    * @default 0
    */
   batchDelay?: number,
@@ -89,7 +89,7 @@ export class ServerUiState<T extends object> {
     }
 
     const existingServer = Boolean(config.serverRef);
-    const path = config.path || DEFAULT_SERVER_PATH
+    const path = config.path || DEFAULT_SERVER_PATH;
     this.wss = new WebSocket.Server({
       server: existingServer ? config.serverRef : undefined,
       port: existingServer ? undefined : config.serverConfig?.port,

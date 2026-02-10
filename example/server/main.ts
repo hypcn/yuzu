@@ -11,10 +11,10 @@ const USE_EXISTING_SERVER = true;
 const server = USE_EXISTING_SERVER ? new Server((req, res) => {
   console.log(`Req: ${req.headers.origin}`);
 
-  res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.writeHead(200);
-  res.end('Hello, World!');
+  res.end("Hello, World!");
 }) : undefined;
 
 
@@ -77,7 +77,6 @@ function updateFixtures() {
   }, 5_000 + Math.random() * 5_000);
 }
 updateFixtures();
-
 
 
 if (USE_EXISTING_SERVER) {

@@ -15,7 +15,7 @@ export interface ClientUiStateSocketConfig {
 
 /**
  * "Bag of Observables"
- * 
+ *
  * See example web app in Kiwi repo for example usage
  */
 export class ClientUiStateObservable<T extends BaseUiStateType> {
@@ -102,7 +102,7 @@ export class ClientUiStateObservable<T extends BaseUiStateType> {
   }
 
   /**
-   * Overwrite the 
+   * Overwrite the
    */
   private overwrite(newState: { [key in keyof T]: T[keyof T]["value"] }) {
     for (const key of Object.keys(newState)) {

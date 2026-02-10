@@ -54,7 +54,7 @@ export class ClientUiState<T extends object> {
    * Subscribable version of the current state.
    * Any key can be subscribed to, and the listener function will be notified of any update
    * affecting the targeted value (or its children).
-   * 
+   *
    * Note: the `state$` property itself cnanot be subscribed to, use `onAny(...)` instead
    */
   public get state$() { return this._subscribableState; }
@@ -154,7 +154,7 @@ export class ClientUiState<T extends object> {
         // if the value is an object, wrap it with the proxy handler, then
         // add the subscribe method to the value before returning it
         get: (target, prop, receiver) => {
-          let value = Reflect.get(target, prop, receiver);
+          const value = Reflect.get(target, prop, receiver);
           this.logRead(target, prop, value);
 
           // Ensure object values are recursively proxied
@@ -162,7 +162,7 @@ export class ClientUiState<T extends object> {
             const objectValue = new Proxy(value, buildProxyHandler([...path, prop.toString()]) as any); // TODO: any is naughty, fix it
 
             // Add the subscribe method to whatever the value is
-            if (!value.hasOwnProperty("subscribe")) {
+            if (!Object.prototype.hasOwnProperty.call(value, "subscribe")) {
               Object.defineProperty(objectValue, "subscribe", {
                 value: (listener: StateListenerFn) => {
                   // Wire up subscription listener
@@ -287,7 +287,7 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * 
+   *
    */
   private notifyListenersOnce(paths: string[][]) {
 
@@ -369,7 +369,7 @@ export class ClientUiState<T extends object> {
   /**
    * Read the value at the specified path in the state tree.
    * Returns undefined if the value at the path cannot be read.
-   * @param path 
+   * @param path
    */
   readPathOptional(path: string[]) {
     try {
@@ -395,9 +395,9 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * 
-   * @param path 
-   * @param listener 
+   *
+   * @param path
+   * @param listener
    */
   onChangeOptional(path: string[], listener: StateListenerFn): YuzuSubscription {
 

@@ -13,16 +13,16 @@ export const YUZU_SETTINGS = {
 /**
  * Union type of all messages sent from the client to the server
  */
-export type ClientUiMessage =
-  | MsgReqComplete;
+export type ClientUiMessage
+  = | MsgReqComplete;
 
 /**
  * Union type of all messages sent from the server to the client
  */
-export type ServerUiMessage =
-  | MsgSendComplete
-  | MsgSendPatch
-  | MsgSendPatchBatch;
+export type ServerUiMessage
+  = | MsgSendComplete
+    | MsgSendPatch
+    | MsgSendPatchBatch;
 
 /**
  * A request from the client for the entire state object.

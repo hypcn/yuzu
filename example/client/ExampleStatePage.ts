@@ -14,7 +14,7 @@ export const ExampleStatePage: m.Component<{}, {
 
     // Listen to changes on a state key
     this.sub.add(state.state$.shades.subscribe((shades) => {
-      logSubscriptions && console.log("shades updated")
+      logSubscriptions && console.log("shades updated");
     }));
 
     // Listen to changes on ALL state keys
@@ -47,6 +47,6 @@ export const ExampleStatePage: m.Component<{}, {
         return m("p", `Fixture ${f.id} - brightness ${f.brightness}% - ${alertMsg}`);
       }),
     ]);
-  }
+  },
 
 };

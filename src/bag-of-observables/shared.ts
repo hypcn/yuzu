@@ -3,7 +3,7 @@ import { BehaviorSubject } from "rxjs";
 
 /**
  * The default type for the type parameter for both client and server UI state classes.
- * 
+ *
  * All shared state definitions MUST NOT implement this interface, as it will break intellisense.
  */
 export interface BaseUiStateType { [key: string]: BehaviorSubject<any> }
@@ -12,15 +12,15 @@ export interface BaseUiStateType { [key: string]: BehaviorSubject<any> }
 /**
  * Union type of all messages sent from the client to the server
  */
-export type ClientUiMessage =
-  | MsgReqLoadAll;
+export type ClientUiMessage
+  = | MsgReqLoadAll;
 
 /**
  * Union type of all messages sent from the server to the client
  */
-export type ServerUiMessage =
-  | MsgSendAll
-  | MsgSendUpdate;
+export type ServerUiMessage
+  = | MsgSendAll
+    | MsgSendUpdate;
 
 /**
  * A request from the client for the entire state object.
