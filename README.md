@@ -399,5 +399,5 @@ This starts a hot-reloading example of both client and server usage, and opens t
 - [ ] Add mutation testing
 - [ ] Increase coverage to 100%
 - [ ] Add E2E tests for real-world scenarios
-- [ ] Add CI/CD
 - [ ] Consider optimisation for array operations
+- [ ] ? Add CI/CD
