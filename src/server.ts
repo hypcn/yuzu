@@ -9,36 +9,54 @@ import { ClientUiMessage, MsgSendComplete, MsgSendPatch, MsgSendPatchBatch, Patc
 
 const DEFAULT_SERVER_PATH = "/api/yuzu";
 
+/**
+ * Configuration options for initializing a ServerUiState instance.
+ * Must provide either serverRef (existing HTTP server) or serverConfig (new server settings).
+ */
 export interface ServerUiStateConfig {
-  /** Reference to existing HTTP server */
+  /** Reference to an existing HTTP server to attach WebSocket server to */
   serverRef: Server | undefined,
-  /** Config options to create new server */
+  /** Configuration options for creating a new HTTP server */
   serverConfig: {
+    /** Port number on which to listen for incoming connections */
     port: number,
   } | undefined,
   /**
-   * Path at which to listen for incoming connections
+   * URL path at which to listen for incoming WebSocket connections
    * @default "/api/yuzu"
    */
   path?: string,
   /**
-   *
+   * Delay in milliseconds to batch multiple state changes before sending to clients.
+   * Set to 0 to disable batching and send patches immediately.
    * @default 0
    */
   batchDelay?: number,
-  /** Optionally specify the logging levels for the default logger */
+  /** Logging levels to enable for the default logger (debug, log, warn, error) */
   logLevels?: YuzuLoggerLevel[],
-  /** Optionally replace the default logger */
+  /** Custom logger implementation to replace the default console-based logger */
   logger?: YuzuLogger,
 }
 
+/**
+ * Interface for a custom logger implementation.
+ * All methods accept variable arguments and can return any value.
+ */
 export interface YuzuLogger {
+  /** Log debug-level messages */
   debug: (...msgs: any[]) => any,
+  /** Log informational messages */
   log: (...msgs: any[]) => any,
+  /** Log warning messages */
   warn: (...msgs: any[]) => any,
+  /** Log error messages */
   error: (...msgs: any[]) => any,
 }
 
+/**
+ * Log level identifiers for controlling which messages are logged.
+ * Used in ServerUiStateConfig.logLevels to filter console output.
+ */
 export type YuzuLoggerLevel = "debug" | "log" | "warn" | "error";
 
 class DefaultLogger implements YuzuLogger {
@@ -62,6 +80,15 @@ class DefaultLogger implements YuzuLogger {
 export class ServerUiState<T extends object> {
 
   private _state: T;
+  /**
+   * The current state object. This is a proxied object that automatically
+   * broadcasts changes to all connected clients when modified.
+   * @example
+   * ```typescript
+   * server.state.count = 5; // Automatically broadcasts to all clients
+   * server.state.items.push({ id: "item1" }); // Also broadcasts
+   * ```
+   */
   public get state() { return this._state; }
 
   private wss: WebSocket.Server;
@@ -72,6 +99,26 @@ export class ServerUiState<T extends object> {
 
   private logger: YuzuLogger;
 
+  /**
+   * Creates a new ServerUiState instance that manages state and broadcasts changes to clients.
+   * @param initial - The initial state object. All properties will be watched for changes.
+   * @param config - Configuration for the WebSocket server and logging
+   * @throws Error if neither serverRef nor serverConfig is provided
+   * @example
+   * ```typescript
+   * // Using an existing HTTP server
+   * const server = new ServerUiState(
+   *   { count: 0 },
+   *   { serverRef: httpServer }
+   * );
+   *
+   * // Creating a new server on a specific port
+   * const server = new ServerUiState(
+   *   { count: 0 },
+   *   { serverConfig: { port: 3000 } }
+   * );
+   * ```
+   */
   constructor(initial: T, config: ServerUiStateConfig) {
 
     if (config.logger !== undefined) {

@@ -29,6 +29,9 @@ interface StateListener {
   listenerFn: StateListenerFn,
 }
 
+/**
+ * Configuration options for the client WebSocket connection.
+ */
 export interface ClientUiStateSocketConfig {
   /**
    * The full websocket address to connect to
@@ -36,6 +39,7 @@ export interface ClientUiStateSocketConfig {
    */
   address: string,
   /**
+   * Duration in milliseconds to wait before attempting to reconnect after connection loss
    * @default 3000
    */
   reconnectTimeout: number,
@@ -74,6 +78,19 @@ export class ClientUiState<T extends object> {
   /** Whether the client is currently connected to a Yuzu server */
   get isConnected() { return this._connected.value; }
 
+  /**
+   * Creates a new ClientUiState instance that connects to a Yuzu server.
+   * The client will automatically connect to the server and synchronize state.
+   * @param initial - The initial state object. This should match the server's initial state structure.
+   * @param config - Optional configuration for the WebSocket connection
+   * @example
+   * ```typescript
+   * const client = new ClientUiState(
+   *   { count: 0, name: "default" },
+   *   { address: "ws://localhost:3000/api/yuzu" }
+   * );
+   * ```
+   */
   constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
     this._state = initial;
     this._subscribableState = this.setState(initial);
@@ -338,7 +355,13 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Completely reload the state from the server
+   * Completely reload the state from the server.
+   * Requests the full state object from the server and updates the local state.
+   * All listeners will be notified of the update.
+   * @example
+   * ```typescript
+   * client.reload(); // Force a full state refresh from the server
+   * ```
    */
   reload() {
     const msg: MsgReqComplete = {
@@ -349,7 +372,15 @@ export class ClientUiState<T extends object> {
 
   /**
    * Read the value at the specified path in the state tree.
-   * Throws an error if the value at the path cannot be read.
+   * Throws an error if the path does not exist.
+   * @param path - Array of string keys representing the path to the value
+   * @returns The value at the specified path
+   * @throws Error if the path does not exist in the state tree
+   * @example
+   * ```typescript
+   * const userName = client.readPathExisting(["user", "name"]);
+   * // Throws error if user.name doesn't exist
+   * ```
    */
   readPathExisting(path: string[]) {
 
@@ -368,8 +399,14 @@ export class ClientUiState<T extends object> {
 
   /**
    * Read the value at the specified path in the state tree.
-   * Returns undefined if the value at the path cannot be read.
-   * @param path
+   * Returns undefined if the path does not exist instead of throwing an error.
+   * @param path - Array of string keys representing the path to the value
+   * @returns The value at the specified path, or undefined if the path doesn't exist
+   * @example
+   * ```typescript
+   * const userName = client.readPathOptional(["user", "name"]);
+   * // Returns undefined if user.name doesn't exist
+   * ```
    */
   readPathOptional(path: string[]) {
     try {
@@ -380,8 +417,20 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Listen to changes at the given path.
-   * The path parameter is untyped, but throws an error at runtime if the path does not currently exist.
+   * Listen to changes at the given path in the state tree.
+   * The path must exist at the time of subscription, or an error will be thrown.
+   * The listener will be called whenever the value at this path (or any nested value) changes.
+   * @param path - Array of string keys representing the path to listen to
+   * @param listener - Function called when the value at the path changes
+   * @returns A YuzuSubscription that can be unsubscribed
+   * @throws Error if the path does not exist in the state tree
+   * @example
+   * ```typescript
+   * const sub = client.onChangeExisting(["user", "name"], (value, path) => {
+   *   console.log("User name changed to:", value);
+   * });
+   * sub.unsubscribe(); // Stop listening
+   * ```
    */
   onChangeExisting(path: string[], listener: StateListenerFn): YuzuSubscription {
 
@@ -395,9 +444,19 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   *
-   * @param path
-   * @param listener
+   * Listen to changes at the given path in the state tree.
+   * Unlike onChangeExisting, this does not require the path to exist at subscription time.
+   * Useful for subscribing to optional or dynamically created state keys.
+   * @param path - Array of string keys representing the path to listen to
+   * @param listener - Function called when the value at the path changes
+   * @returns A YuzuSubscription that can be unsubscribed
+   * @example
+   * ```typescript
+   * // Listen to a path that might not exist yet
+   * const sub = client.onChangeOptional(["devices", "device1"], (value, path) => {
+   *   if (value) console.log("Device 1 state:", value);
+   * });
+   * ```
    */
   onChangeOptional(path: string[], listener: StateListenerFn): YuzuSubscription {
 
@@ -408,7 +467,17 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Subscribe to all changes to the state
+   * Subscribe to all changes to the state tree.
+   * The listener will be called whenever any value in the state changes.
+   * @param listener - Function called when any part of the state changes
+   * @returns A YuzuSubscription that can be unsubscribed
+   * @example
+   * ```typescript
+   * const sub = client.onAny((value, path) => {
+   *   console.log("State changed at path:", path.join("."));
+   *   // Trigger UI redraw
+   * });
+   * ```
    */
   onAny(listener: StateListenerFn): YuzuSubscription {
     return this.onChangeExisting([], listener);
