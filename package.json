@@ -20,11 +20,11 @@
     "watch": "rimraf dist && tsc -p src/tsconfig.json -w",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage",
+    "test-watch": "vitest",
+    "test-ui": "vitest --ui",
+    "test-coverage": "vitest run --coverage",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint-fix": "eslint . --fix"
   },
   "dependencies": {
     "ws": "^7.4.3"
