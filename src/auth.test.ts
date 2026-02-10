@@ -37,7 +37,7 @@ describe("Authentication", () => {
       // Default behavior - no auth required
       serverUiState = new ServerUiState(
         { count: 0 },
-        { serverConfig: { port: TEST_PORT } }
+        { serverConfig: { port: TEST_PORT } },
       );
 
       const client = new WebSocket(`ws://localhost:${TEST_PORT}/api/yuzu`);
@@ -61,7 +61,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new WebSocket(`ws://localhost:${TEST_PORT}/api/yuzu?token=valid`);
@@ -91,7 +91,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new WebSocket(`ws://localhost:${TEST_PORT}/api/yuzu?token=valid`);
@@ -117,7 +117,7 @@ describe("Authentication", () => {
           serverConfig: { port: TEST_PORT },
           authenticate,
           logLevels: [], // Suppress warning logs in test output
-        }
+        },
       );
 
       const client = new WebSocket(`ws://localhost:${TEST_PORT}/api/yuzu?token=invalid`);
@@ -145,7 +145,7 @@ describe("Authentication", () => {
           serverConfig: { port: TEST_PORT },
           authenticate,
           logLevels: [],
-        }
+        },
       );
 
       const client = new WebSocket(`ws://localhost:${TEST_PORT}/api/yuzu`);
@@ -173,7 +173,7 @@ describe("Authentication", () => {
           serverConfig: { port: TEST_PORT },
           authenticate,
           logLevels: [],
-        }
+        },
       );
 
       const client = new WebSocket(`ws://localhost:${TEST_PORT}/api/yuzu`);
@@ -198,11 +198,11 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new WebSocket(
-        `ws://localhost:${TEST_PORT}/api/yuzu?token=abc123&user=john&flag=true`
+        `ws://localhost:${TEST_PORT}/api/yuzu?token=abc123&user=john&flag=true`,
       );
 
       await new Promise<void>((resolve, reject) => {
@@ -228,11 +228,11 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new WebSocket(
-        `ws://localhost:${TEST_PORT}/api/yuzu?token=${encodeURIComponent(tokenWithSpecialChars)}`
+        `ws://localhost:${TEST_PORT}/api/yuzu?token=${encodeURIComponent(tokenWithSpecialChars)}`,
       );
 
       await new Promise<void>((resolve, reject) => {
@@ -252,12 +252,12 @@ describe("Authentication", () => {
     it("should connect without token when not provided", async () => {
       serverUiState = new ServerUiState(
         { count: 0 },
-        { serverConfig: { port: TEST_PORT } }
+        { serverConfig: { port: TEST_PORT } },
       );
 
       const client = new ClientUiState(
         { count: 0 },
-        { address: `ws://localhost:${TEST_PORT}/api/yuzu` }
+        { address: `ws://localhost:${TEST_PORT}/api/yuzu` },
       );
 
       await new Promise<void>((resolve) => {
@@ -281,7 +281,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -289,7 +289,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           token: "mytoken123",
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -316,7 +316,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -324,7 +324,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           getToken,
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -352,7 +352,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -360,7 +360,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           getToken,
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -388,7 +388,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -396,7 +396,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           token: specialToken,
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -422,7 +422,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -430,7 +430,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu?existing=param`,
           token: "newtoken",
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -458,7 +458,7 @@ describe("Authentication", () => {
           serverConfig: { port: TEST_PORT },
           authenticate,
           logLevels: [],
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -466,7 +466,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           token: "badtoken",
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -500,7 +500,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       // Valid token
@@ -509,7 +509,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           token: "valid.jwt.token",
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {
@@ -539,7 +539,7 @@ describe("Authentication", () => {
         {
           serverConfig: { port: TEST_PORT },
           authenticate,
-        }
+        },
       );
 
       const client = new ClientUiState(
@@ -547,7 +547,7 @@ describe("Authentication", () => {
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu`,
           getToken,
-        }
+        },
       );
 
       await new Promise<void>((resolve) => {

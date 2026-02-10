@@ -26,12 +26,12 @@ export interface AuthenticationInfo {
  * Must provide either serverRef (existing HTTP server) OR serverConfig (new server settings), but not both.
  */
 export interface ServerUiStateConfig {
-  /** 
+  /**
    * Reference to an existing HTTP server to attach WebSocket server to.
    * Provide either this OR serverConfig, not both.
    */
   serverRef?: Server,
-  /** 
+  /**
    * Configuration options for creating a new HTTP server.
    * Provide either this OR serverRef, not both.
    */
