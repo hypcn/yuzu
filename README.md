@@ -197,6 +197,162 @@ export const ExampleStatePage: m.Component<{}, {
 };
 ```
 
+## Authentication
+
+Yuzu supports optional authentication for WebSocket connections using query parameters. This allows you to secure your WebSocket endpoints while maintaining compatibility with both browser and Node.js environments.
+
+### Server-Side Authentication
+
+Implement authentication by providing an `authenticate` callback in the `ServerUiState` configuration. The callback receives connection information and returns `true` to accept or `false` to reject the connection. The callback can be synchronous or asynchronous (return a `Promise`).
+
+```ts
+import { ServerUiState, AuthenticationInfo } from "@hypericon/yuzu";
+import { INITIAL_UI_STATE } from "./shared/ui-state";
+
+const validTokens = new Set(["secret-token-123", "another-valid-token"]);
+
+const uiState = new ServerUiState(INITIAL_UI_STATE, {
+  serverConfig: { port: 3000 },
+  
+  // Synchronous authentication
+  authenticate: (info: AuthenticationInfo) => {
+    const token = info.queryParams.get("token");
+    return validTokens.has(token || "");
+  }
+});
+```
+
+The `AuthenticationInfo` object provides:
+- `request`: The incoming HTTP request (`IncomingMessage`)
+- `queryParams`: Parsed query parameters (`URLSearchParams`)
+- `origin`: The `Origin` header value (if present)
+
+### Client-Side Authentication
+
+Clients can provide authentication tokens in two ways:
+
+#### Static Token
+
+Provide a token string that will be appended to all connection attempts:
+
+```ts
+import { ClientUiState } from "@hypericon/yuzu";
+import { INITIAL_UI_STATE } from "./shared/ui-state";
+
+const uiState = new ClientUiState(INITIAL_UI_STATE, {
+  address: "ws://localhost:3000",
+  token: "secret-token-123"
+});
+
+await uiState.connect();
+// Connects to: ws://localhost:3000?token=secret-token-123
+```
+
+#### Dynamic Token via Callback
+
+Provide a `getToken` callback for dynamic token retrieval (e.g., refreshing expired tokens). The callback can be synchronous or asynchronous:
+
+```ts
+const uiState = new ClientUiState(INITIAL_UI_STATE, {
+  address: "ws://localhost:3000",
+  getToken: async () => {
+    // Fetch fresh token from your auth service
+    const response = await fetch("/api/auth/token");
+    const data = await response.json();
+    return data.token;
+  }
+});
+
+await uiState.connect();
+```
+
+### Real-World Examples
+
+#### JWT Authentication
+
+```ts
+// Server
+import jwt from 'jsonwebtoken';
+
+const uiState = new ServerUiState(INITIAL_UI_STATE, {
+  serverConfig: { port: 3000 },
+  authenticate: async (info: AuthenticationInfo) => {
+    try {
+      const token = info.queryParams.get("token");
+      if (!token) return false;
+      
+      // Verify JWT token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+      console.log(`Authenticated user: ${decoded.userId}`);
+      return true;
+    } catch (err) {
+      console.error("JWT verification failed:", err);
+      return false;
+    }
+  }
+});
+
+// Client
+const uiState = new ClientUiState(INITIAL_UI_STATE, {
+  address: "ws://localhost:3000",
+  getToken: async () => {
+    // Get JWT from localStorage or auth service
+    return localStorage.getItem("jwtToken") || "";
+  }
+});
+```
+
+#### Token Refresh on Reconnection
+
+The `getToken` callback is called on every connection attempt, making it ideal for token refresh scenarios:
+
+```ts
+const uiState = new ClientUiState(INITIAL_UI_STATE, {
+  address: "ws://localhost:3000",
+  getToken: async () => {
+    // Check if token is expired
+    const token = localStorage.getItem("token");
+    const expiry = localStorage.getItem("tokenExpiry");
+    
+    if (!token || Date.now() > parseInt(expiry || "0")) {
+      // Refresh token if expired
+      const response = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include"
+      });
+      const data = await response.json();
+      
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("tokenExpiry", data.expiry);
+      return data.token;
+    }
+    
+    return token;
+  }
+});
+```
+
+### Security Best Practices
+
+1. **Use WSS (WebSocket Secure)** in production: `wss://your-domain.com`
+2. **Short-lived tokens**: Use tokens with expiration times (e.g., JWT with exp claim)
+3. **Token rotation**: Implement token refresh mechanisms for long-running connections
+4. **Rate limiting**: Consider rate-limiting authentication attempts to prevent brute-force attacks
+5. **HTTPS for token retrieval**: Always fetch tokens over HTTPS to prevent interception
+6. **Origin validation**: Use `info.origin` to validate the request origin when applicable
+7. **Error handling**: The `authenticate` callback should handle errors gracefully; if it throws, the connection will be rejected
+
+### Backward Compatibility
+
+Authentication is completely optional. Existing code without authentication continues to work unchanged:
+
+```ts
+// No authentication - works as before
+const uiState = new ServerUiState(INITIAL_UI_STATE, {
+  serverConfig: { port: 3000 }
+});
+```
+
 ## RxJS Compatibility
 
 `YuzuSubscription` implements the RxJS `Unsubscribable` interface, making it fully compatible with the RxJS ecosystem. You can:

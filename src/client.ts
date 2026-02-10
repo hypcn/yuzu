@@ -43,6 +43,22 @@ export interface ClientUiStateSocketConfig {
    * @default 3000
    */
   reconnectTimeout: number,
+  /**
+   * Optional authentication token.
+   * Automatically appended to connection URL as query parameter: ?token=xyz
+   * Use either `token` or `getToken`, not both.
+   */
+  token?: string,
+  /**
+   * Optional callback to get authentication token.
+   * Called on each connection attempt, useful for token refresh/rotation.
+   * Use either `token` or `getToken`, not both.
+   * @example
+   * ```typescript
+   * getToken: async () => await myAuthService.getValidToken()
+   * ```
+   */
+  getToken?: () => string | Promise<string>,
 }
 
 export class ClientUiState<T extends object> {
@@ -102,9 +118,27 @@ export class ClientUiState<T extends object> {
   /**
    * Set up connection to the specified WS server, and reload whenever the connection is dropped
    */
-  private connect() {
+  private async connect() {
     console.log("Connecting...");
-    this.ws = new WebSocket(this.wsConfig.address);
+
+    // Build connection URL with authentication token if provided
+    let connectionUrl = this.wsConfig.address;
+
+    // Get token from either token or getToken
+    let token: string | undefined;
+    if (this.wsConfig.getToken) {
+      token = await this.wsConfig.getToken();
+    } else if (this.wsConfig.token) {
+      token = this.wsConfig.token;
+    }
+
+    // Append token as query parameter if present
+    if (token) {
+      const separator = connectionUrl.includes("?") ? "&" : "?";
+      connectionUrl = `${connectionUrl}${separator}token=${encodeURIComponent(token)}`;
+    }
+
+    this.ws = new WebSocket(connectionUrl);
 
     this.ws.addEventListener("open", (ev) => {
       console.log("socket open");

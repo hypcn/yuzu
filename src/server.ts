@@ -1,4 +1,4 @@
-import { Server } from "http";
+import { IncomingMessage, Server } from "http";
 import { inspect } from "util";
 import WebSocket from "ws";
 import { ClientUiMessage, MsgSendComplete, MsgSendPatch, MsgSendPatchBatch, PatchableValueType, StatePatch, YUZU_SETTINGS as SETTINGS } from "./shared";
@@ -10,17 +10,35 @@ import { ClientUiMessage, MsgSendComplete, MsgSendPatch, MsgSendPatchBatch, Patc
 const DEFAULT_SERVER_PATH = "/api/yuzu";
 
 /**
+ * Information provided to the authentication callback during WebSocket handshake.
+ */
+export interface AuthenticationInfo {
+  /** The incoming HTTP request with headers, cookies, etc. */
+  request: IncomingMessage;
+  /** Parsed query parameters from the connection URL */
+  queryParams: URLSearchParams;
+  /** Client's origin header, if present */
+  origin?: string;
+}
+
+/**
  * Configuration options for initializing a ServerUiState instance.
- * Must provide either serverRef (existing HTTP server) or serverConfig (new server settings).
+ * Must provide either serverRef (existing HTTP server) OR serverConfig (new server settings), but not both.
  */
 export interface ServerUiStateConfig {
-  /** Reference to an existing HTTP server to attach WebSocket server to */
-  serverRef: Server | undefined,
-  /** Configuration options for creating a new HTTP server */
-  serverConfig: {
+  /** 
+   * Reference to an existing HTTP server to attach WebSocket server to.
+   * Provide either this OR serverConfig, not both.
+   */
+  serverRef?: Server,
+  /** 
+   * Configuration options for creating a new HTTP server.
+   * Provide either this OR serverRef, not both.
+   */
+  serverConfig?: {
     /** Port number on which to listen for incoming connections */
     port: number,
-  } | undefined,
+  },
   /**
    * URL path at which to listen for incoming WebSocket connections
    * @default "/api/yuzu"
@@ -36,6 +54,21 @@ export interface ServerUiStateConfig {
   logLevels?: YuzuLoggerLevel[],
   /** Custom logger implementation to replace the default console-based logger */
   logger?: YuzuLogger,
+  /**
+   * Optional authentication callback invoked during WebSocket handshake.
+   * Return true/Promise<true> to accept connection, false/Promise<false> to reject.
+   * Connection is rejected BEFORE it's fully established if auth fails.
+   * If not provided, all connections are accepted.
+   * @example
+   * ```typescript
+   * authenticate: async (info) => {
+   *   const token = info.queryParams.get('token');
+   *   if (!token) return false;
+   *   return await myAuthService.verifyToken(token);
+   * }
+   * ```
+   */
+  authenticate?: (info: AuthenticationInfo) => boolean | Promise<boolean>;
 }
 
 /**
@@ -92,6 +125,7 @@ export class ServerUiState<T extends object> {
   public get state() { return this._state; }
 
   private wss: WebSocket.Server;
+  private httpServer: Server | undefined;
 
   private patchBatch: StatePatch[] = [];
   private batchDelay: number = 0;
@@ -137,15 +171,108 @@ export class ServerUiState<T extends object> {
 
     const existingServer = Boolean(config.serverRef);
     const path = config.path || DEFAULT_SERVER_PATH;
+
+    // Set up authentication if provided
+    const verifyClient = config.authenticate
+      ? (info: { origin: string; req: IncomingMessage }, callback: (verified: boolean, code?: number, message?: string) => void) => {
+        // Parse query parameters from the request URL
+        const url = new URL(info.req.url || "", `http://${info.req.headers.host}`);
+        const queryParams = url.searchParams;
+
+        const authInfo: AuthenticationInfo = {
+          request: info.req,
+          queryParams,
+          origin: info.origin,
+        };
+
+        // Handle both sync and async authenticate functions
+        try {
+          const resultOrPromise = config.authenticate!(authInfo);
+
+          if (resultOrPromise instanceof Promise) {
+            // Async authentication
+            resultOrPromise
+              .then((result) => {
+                if (result) {
+                  callback(true);
+                } else {
+                  this.logger.warn("Authentication failed for incoming connection");
+                  callback(false, 401, "Unauthorized");
+                }
+              })
+              .catch((error) => {
+                this.logger.error("Error during authentication:", error);
+                callback(false, 500, "Internal Server Error");
+              });
+          } else {
+            // Sync authentication
+            if (resultOrPromise) {
+              callback(true);
+            } else {
+              this.logger.warn("Authentication failed for incoming connection");
+              callback(false, 401, "Unauthorized");
+            }
+          }
+        } catch (error) {
+          // Handle synchronous errors
+          this.logger.error("Error during authentication:", error);
+          callback(false, 500, "Internal Server Error");
+        }
+      }
+      : undefined;
+
     this.wss = new WebSocket.Server({
       server: existingServer ? config.serverRef : undefined,
       port: existingServer ? undefined : config.serverConfig?.port,
       path: path.startsWith("/") ? path : `/${path}`,
+      verifyClient,
     });
+
+    // Store HTTP server reference if we created one (for cleanup)
+    if (!existingServer && config.serverConfig) {
+      this.httpServer = this.wss.options.server as Server | undefined;
+    }
+
     this.listen();
 
     if (config.batchDelay && config.batchDelay > 0) this.batchDelay = config.batchDelay;
 
+  }
+
+  /**
+   * Closes the WebSocket server and cleans up resources.
+   * If an HTTP server was created by ServerUiState, it will also be closed.
+   * If an external HTTP server was provided, it will NOT be closed.
+   */
+  close(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Clear any pending batch timeout
+      if (this.batchTimeout) {
+        clearTimeout(this.batchTimeout);
+        this.batchTimeout = undefined;
+      }
+
+      // Close WebSocket server
+      this.wss.close((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Close HTTP server if we created it
+        if (this.httpServer) {
+          this.httpServer.close((httpErr) => {
+            if (httpErr) {
+              reject(httpErr);
+            } else {
+              resolve();
+            }
+          });
+        } else {
+          resolve();
+        }
+      });
+    });
   }
 
   /**
