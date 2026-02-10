@@ -69,7 +69,7 @@ export const INITIAL_UI_STATE = {
 } as const;
 
 /** ... OR define a separate interface... */
-export interface UiState = {
+export interface UiState {
   shades: ShadeStatus[],
   fixtures: FixtureStatus[],
 };
@@ -143,7 +143,7 @@ Example Mithril page component:
 ```ts
 // client/pages/ExampleStatePage.ts
 
-import { ClientUiState, Subscription } from "@hypericon/yuzu";
+import { ClientUiState, YuzuSubscription } from "@hypericon/yuzu";
 import m from "mithril";
 import { UI_STATE, INITIAL_UI_STATE } from "../../ui-state";
 
@@ -152,11 +152,11 @@ const uiState = new ClientUiState(INITIAL_UI_STATE);
 
 // Example Mithril page component
 export const ExampleStatePage: m.Component<{}, {
-  sub: Subscription,
+  sub: YuzuSubscription,
 }> = {
 
   oninit() {
-    this.sub = new Subscription();
+    this.sub = new YuzuSubscription();
 
     // Listen to changes on the subscribable state property
     // Every object and primitive has a .subscribe() method added for precise listening
@@ -234,7 +234,7 @@ Server Update | Updated Path | Subscription Notified
 Given the following state interface definition:
 
 ```ts
-interface State: {
+interface State {
   shadeControllers: {
     [id: string]: {
       status: string,
@@ -272,12 +272,12 @@ const initialState: State = {
 And the client subscriptions:
 
 ```ts
-const client = new ClientState<...>(...);
+const client = new ClientUiState<...>(...);
 
-const sub1 = client.state.shadeControllers.subscribe(v => { ... });
-const sub2 = client.state.shadeControllers["id1"].subscribe(v => { ... });
-const sub3 = client.state.shadeControllers["id1"].shades.subscribe(v => { ... });
-const sub4 = client.state.shadeControllers["id1"].shades[5].subscribe(v => { ... });
+const sub1 = client.state$.shadeControllers.subscribe(v => { ... });
+const sub2 = client.state$.shadeControllers["id1"].subscribe(v => { ... });
+const sub3 = client.state$.shadeControllers["id1"].shades.subscribe(v => { ... });
+const sub4 = client.state$.shadeControllers["id1"].shades[5].subscribe(v => { ... });
 
 // path1 - [ "shadeControllers" ]
 // path2 - [ "shadeControllers", "id1" ]
@@ -356,9 +356,9 @@ uiState.state$.transientDevices.subscribe(
   (allDevicesObj: { [id: string]: DeviceState | undefined }) => { ... },
 );
 // Receives all updates, on the last update the parameter is undefined
-uiState.state$.transientDevices["device1"].subscribe(device: DeviceState | undefined => { ... });
+uiState.state$.transientDevices["device1"].subscribe((device: DeviceState | undefined) => { ... });
 // Receives one update, when the status is explicitly updated
-uiState.state$.transientDevices["device1"].status.subscribe(status: string => { ... });
+uiState.state$.transientDevices["device1"].status.subscribe((status: string) => { ... });
 ```
 
 ### Arrays in State Tree
