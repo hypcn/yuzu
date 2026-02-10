@@ -1,4 +1,4 @@
-import { ClientUiState } from "../../src";
+import { ClientUiState } from "../../dist";
 import { INITIAL_UI_STATE } from "../shared/ui-state-definition";
 
 /**
