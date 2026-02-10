@@ -3,6 +3,7 @@
   "version": "0.4.3",
   "description": "Library to push UI State updates across connected clients in CI applications",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "author": "Ed Johnson, Hypericon Ltd",
   "license": "MIT",
   "homepage": "https://github.com/hypcn/yuzu#readme",
