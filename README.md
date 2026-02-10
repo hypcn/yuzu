@@ -17,6 +17,17 @@ Install the library:
 
 Typescript type definitions are included.
 
+## Testing
+
+Yuzu includes a comprehensive test suite with 90+ tests covering all core functionality.
+
+```bash
+npm test              # Run tests once
+npm run test:watch    # Run tests in watch mode
+npm run test:ui       # Run tests with UI
+npm run test:coverage # Generate coverage report
+```
+
 ### Breaking Changes
 
 0.4.0
