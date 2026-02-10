@@ -392,3 +392,12 @@ npm run dev
 ```
 
 This starts a hot-reloading example of both client and server usage, and opens the client in the default browser.
+
+### TODO
+
+- [ ] Add performance benchmarks
+- [ ] Add mutation testing
+- [ ] Increase coverage to 100%
+- [ ] Add E2E tests for real-world scenarios
+- [ ] Add CI/CD
+- [ ] Consider optimisation for array operations
