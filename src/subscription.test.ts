@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { Subscription } from "rxjs";
 import { YuzuSubscription } from "./subscription";
 
 describe("YuzuSubscription", () => {
@@ -8,6 +9,7 @@ describe("YuzuSubscription", () => {
       const sub = new YuzuSubscription();
       expect(sub).toBeInstanceOf(YuzuSubscription);
       expect(sub._unsubFunctions).toEqual([]);
+      expect(sub.closed).toBe(false);
     });
 
     it("should create a subscription with unsubscribe function", () => {
@@ -15,6 +17,7 @@ describe("YuzuSubscription", () => {
       const sub = new YuzuSubscription(unsubFn);
       expect(sub._unsubFunctions).toHaveLength(1);
       expect(sub._unsubFunctions[0]).toBe(unsubFn);
+      expect(sub.closed).toBe(false);
     });
   });
 
@@ -29,11 +32,13 @@ describe("YuzuSubscription", () => {
 
       expect(fn1).toHaveBeenCalledTimes(1);
       expect(fn2).toHaveBeenCalledTimes(1);
+      expect(sub.closed).toBe(true);
     });
 
     it("should handle empty unsubscribe functions array", () => {
       const sub = new YuzuSubscription();
       expect(() => sub.unsubscribe()).not.toThrow();
+      expect(sub.closed).toBe(true);
     });
 
     it("should call unsubscribe functions even if one throws", () => {
@@ -48,10 +53,35 @@ describe("YuzuSubscription", () => {
       expect(fn1).toHaveBeenCalledTimes(1);
       // fn2 won't be called due to the error
     });
+
+    it("should be idempotent - calling multiple times only executes once", () => {
+      const fn = vi.fn();
+      const sub = new YuzuSubscription(fn);
+
+      sub.unsubscribe();
+      sub.unsubscribe();
+      sub.unsubscribe();
+
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(sub.closed).toBe(true);
+    });
+  });
+
+  describe("closed property", () => {
+    it("should be false initially", () => {
+      const sub = new YuzuSubscription();
+      expect(sub.closed).toBe(false);
+    });
+
+    it("should be true after unsubscribe", () => {
+      const sub = new YuzuSubscription();
+      sub.unsubscribe();
+      expect(sub.closed).toBe(true);
+    });
   });
 
   describe("add", () => {
-    it("should add a single subscription", () => {
+    it("should add a single YuzuSubscription", () => {
       const fn1 = vi.fn();
       const fn2 = vi.fn();
       const sub1 = new YuzuSubscription(fn1);
@@ -59,13 +89,14 @@ describe("YuzuSubscription", () => {
 
       sub1.add(sub2);
 
-      expect(sub1._unsubFunctions).toHaveLength(2);
       sub1.unsubscribe();
       expect(fn1).toHaveBeenCalledTimes(1);
       expect(fn2).toHaveBeenCalledTimes(1);
+      expect(sub1.closed).toBe(true);
+      expect(sub2.closed).toBe(true);
     });
 
-    it("should add multiple subscriptions", () => {
+    it("should add multiple YuzuSubscriptions", () => {
       const fn1 = vi.fn();
       const fn2 = vi.fn();
       const fn3 = vi.fn();
@@ -75,28 +106,58 @@ describe("YuzuSubscription", () => {
 
       sub1.add(sub2, sub3);
 
-      expect(sub1._unsubFunctions).toHaveLength(3);
       sub1.unsubscribe();
       expect(fn1).toHaveBeenCalledTimes(1);
       expect(fn2).toHaveBeenCalledTimes(1);
       expect(fn3).toHaveBeenCalledTimes(1);
     });
 
-    it("should handle adding subscriptions with multiple unsubscribe functions", () => {
+    it("should add plain functions as teardown logic", () => {
       const fn1 = vi.fn();
       const fn2 = vi.fn();
       const fn3 = vi.fn();
+      const sub = new YuzuSubscription(fn1);
+
+      sub.add(fn2, fn3);
+
+      sub.unsubscribe();
+      expect(fn1).toHaveBeenCalledTimes(1);
+      expect(fn2).toHaveBeenCalledTimes(1);
+      expect(fn3).toHaveBeenCalledTimes(1);
+    });
+
+    it("should add RxJS Subscription objects", () => {
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+      const sub1 = new YuzuSubscription(fn1);
+      const rxjsSub = new Subscription(fn2);
+
+      sub1.add(rxjsSub);
+
+      sub1.unsubscribe();
+      expect(fn1).toHaveBeenCalledTimes(1);
+      expect(fn2).toHaveBeenCalledTimes(1);
+      expect(sub1.closed).toBe(true);
+      expect(rxjsSub.closed).toBe(true);
+    });
+
+    it("should add mix of functions, YuzuSubscriptions, and RxJS Subscriptions", () => {
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+      const fn3 = vi.fn();
+      const fn4 = vi.fn();
+
       const sub1 = new YuzuSubscription(fn1);
       const sub2 = new YuzuSubscription(fn2);
-      sub2._unsubFunctions.push(fn3);
+      const rxjsSub = new Subscription(fn3);
 
-      sub1.add(sub2);
+      sub1.add(sub2, fn4, rxjsSub);
 
-      expect(sub1._unsubFunctions).toHaveLength(3);
       sub1.unsubscribe();
       expect(fn1).toHaveBeenCalledTimes(1);
       expect(fn2).toHaveBeenCalledTimes(1);
       expect(fn3).toHaveBeenCalledTimes(1);
+      expect(fn4).toHaveBeenCalledTimes(1);
     });
 
     it("should handle adding empty subscriptions", () => {
@@ -106,9 +167,22 @@ describe("YuzuSubscription", () => {
 
       sub1.add(sub2);
 
-      expect(sub1._unsubFunctions).toHaveLength(1);
       sub1.unsubscribe();
       expect(fn1).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle adding objects that implement Unsubscribable interface", () => {
+      const fn = vi.fn();
+      const customUnsub = {
+        unsubscribe: vi.fn(),
+      };
+
+      const sub = new YuzuSubscription(fn);
+      sub.add(customUnsub);
+
+      sub.unsubscribe();
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(customUnsub.unsubscribe).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -130,6 +204,33 @@ describe("YuzuSubscription", () => {
       sub.unsubscribe();
 
       expect(listeners).toEqual([]);
+    });
+
+    it("should work as drop-in replacement for RxJS Subscription", () => {
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
+
+      // User can mix YuzuSubscription and RxJS Subscription
+      const yuzuSub = new YuzuSubscription(fn1);
+      const rxjsSub = new Subscription(fn2);
+
+      // Can add either to the other
+      yuzuSub.add(rxjsSub);
+
+      yuzuSub.unsubscribe();
+
+      expect(fn1).toHaveBeenCalled();
+      expect(fn2).toHaveBeenCalled();
+      expect(yuzuSub.closed).toBe(true);
+      expect(rxjsSub.closed).toBe(true);
+    });
+  });
+
+  describe("RxJS compatibility", () => {
+    it("should be assignable to Unsubscribable type", () => {
+      const sub: { unsubscribe(): void } = new YuzuSubscription();
+      expect(sub).toBeDefined();
+      expect(typeof sub.unsubscribe).toBe("function");
     });
   });
 });

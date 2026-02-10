@@ -197,6 +197,37 @@ export const ExampleStatePage: m.Component<{}, {
 };
 ```
 
+## RxJS Compatibility
+
+`YuzuSubscription` implements the RxJS `Unsubscribable` interface, making it fully compatible with the RxJS ecosystem. You can:
+
+- Use `YuzuSubscription` anywhere an RxJS `Subscription` is expected
+- Add RxJS `Subscription` objects to a `YuzuSubscription` using `.add()`
+- Add plain functions as teardown logic
+- Mix and match `YuzuSubscription` and RxJS `Subscription` objects
+
+```ts
+import { interval } from 'rxjs';
+import { YuzuSubscription } from '@hypericon/yuzu';
+
+const sub = new YuzuSubscription();
+
+// Add Yuzu subscription
+sub.add(uiState.state$.count.subscribe(value => console.log(value)));
+
+// Add RxJS subscription
+const rxjsSub = interval(1000).subscribe(n => console.log(n));
+sub.add(rxjsSub);
+
+// Add plain function
+sub.add(() => console.log('Cleanup'));
+
+// Unsubscribe all at once
+sub.unsubscribe();
+```
+
+The `closed` property indicates whether the subscription has been unsubscribed, and calling `unsubscribe()` multiple times is safe (idempotent).
+
 ## Considerations
 
 ### Subscription Paths
