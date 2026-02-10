@@ -240,7 +240,7 @@ describe('ServerUiState', () => {
   });
 
   describe('WebSocket communication', () => {
-    it('should accept WebSocket connections', (done) => {
+    it('should accept WebSocket connections', async () => {
       const PORT = 3100;
       const initialState = { count: 0 };
       const config: ServerUiStateConfig = {
@@ -252,22 +252,24 @@ describe('ServerUiState', () => {
       const server = new ServerUiState(initialState, config);
 
       // Wait a bit for server to start
-      setTimeout(() => {
-        const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
+      await new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
 
-        client.on('open', () => {
-          expect(mockLogger.log).toHaveBeenCalled();
-          client.close();
-          done();
-        });
+          client.on('open', () => {
+            expect(mockLogger.log).toHaveBeenCalled();
+            client.close();
+            resolve();
+          });
 
-        client.on('error', (err) => {
-          done(err);
-        });
-      }, 100);
+          client.on('error', (err) => {
+            reject(err);
+          });
+        }, 100);
+      });
     });
 
-    it('should send complete state on request', (done) => {
+    it('should send complete state on request', async () => {
       const PORT = 3101;
       const initialState = { count: 42, name: 'test' };
       const config: ServerUiStateConfig = {
@@ -278,28 +280,30 @@ describe('ServerUiState', () => {
 
       const server = new ServerUiState(initialState, config);
 
-      setTimeout(() => {
-        const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
+      await new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
 
-        client.on('open', () => {
-          client.send(JSON.stringify({ type: 'complete' }));
-        });
+          client.on('open', () => {
+            client.send(JSON.stringify({ type: 'complete' }));
+          });
 
-        client.on('message', (data) => {
-          const msg = JSON.parse(data.toString()) as MsgSendComplete;
-          expect(msg.type).toBe('complete');
-          expect(msg.state).toEqual({ count: 42, name: 'test' });
-          client.close();
-          done();
-        });
+          client.on('message', (data) => {
+            const msg = JSON.parse(data.toString()) as MsgSendComplete;
+            expect(msg.type).toBe('complete');
+            expect(msg.state).toEqual({ count: 42, name: 'test' });
+            client.close();
+            resolve();
+          });
 
-        client.on('error', (err) => {
-          done(err);
-        });
-      }, 100);
+          client.on('error', (err) => {
+            reject(err);
+          });
+        }, 100);
+      });
     });
 
-    it('should broadcast patches when state changes', (done) => {
+    it('should broadcast patches when state changes', async () => {
       const PORT = 3102;
       const initialState = { count: 0 };
       const config: ServerUiStateConfig = {
@@ -310,35 +314,37 @@ describe('ServerUiState', () => {
 
       const server = new ServerUiState(initialState, config);
 
-      setTimeout(() => {
-        const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
+      await new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
 
-        client.on('open', () => {
-          // Trigger a state change after connection
-          setTimeout(() => {
-            server.state.count = 5;
-          }, 50);
-        });
+          client.on('open', () => {
+            // Trigger a state change after connection
+            setTimeout(() => {
+              server.state.count = 5;
+            }, 50);
+          });
 
-        client.on('message', (data) => {
-          const msg = JSON.parse(data.toString()) as MsgSendPatch;
-          if (msg.type === 'patch') {
-            expect(msg.patch.path).toEqual(['count']);
-            expect(msg.patch.value).toBe(5);
-            client.close();
-            done();
-          }
-        });
+          client.on('message', (data) => {
+            const msg = JSON.parse(data.toString()) as MsgSendPatch;
+            if (msg.type === 'patch') {
+              expect(msg.patch.path).toEqual(['count']);
+              expect(msg.patch.value).toBe(5);
+              client.close();
+              resolve();
+            }
+          });
 
-        client.on('error', (err) => {
-          done(err);
-        });
-      }, 100);
+          client.on('error', (err) => {
+            reject(err);
+          });
+        }, 100);
+      });
     });
   });
 
   describe('batch updates', () => {
-    it('should batch patches when batchDelay is set', (done) => {
+    it('should batch patches when batchDelay is set', async () => {
       const PORT = 3103;
       const initialState = { count: 0, name: 'test' };
       const config: ServerUiStateConfig = {
@@ -350,32 +356,34 @@ describe('ServerUiState', () => {
 
       const server = new ServerUiState(initialState, config);
 
-      setTimeout(() => {
-        const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
+      await new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          const client = new WebSocket(`ws://localhost:${PORT}/api/yuzu`);
 
-        client.on('open', () => {
-          // Trigger multiple state changes
-          setTimeout(() => {
-            server.state.count = 1;
-            server.state.count = 2;
-            server.state.name = 'updated';
-          }, 50);
-        });
+          client.on('open', () => {
+            // Trigger multiple state changes
+            setTimeout(() => {
+              server.state.count = 1;
+              server.state.count = 2;
+              server.state.name = 'updated';
+            }, 50);
+          });
 
-        client.on('message', (data) => {
-          const msg = JSON.parse(data.toString());
-          if (msg.type === 'patch-batch') {
-            const batchMsg = msg as MsgSendPatchBatch;
-            expect(batchMsg.patches.length).toBeGreaterThan(1);
-            client.close();
-            done();
-          }
-        });
+          client.on('message', (data) => {
+            const msg = JSON.parse(data.toString());
+            if (msg.type === 'patch-batch') {
+              const batchMsg = msg as MsgSendPatchBatch;
+              expect(batchMsg.patches.length).toBeGreaterThan(1);
+              client.close();
+              resolve();
+            }
+          });
 
-        client.on('error', (err) => {
-          done(err);
-        });
-      }, 100);
+          client.on('error', (err) => {
+            reject(err);
+          });
+        }, 100);
+      });
     });
   });
 
