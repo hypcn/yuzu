@@ -597,6 +597,8 @@ This starts a hot-reloading example of both client and server usage, and opens t
 
 ### TODO
 
+- [ ] More docs?
+- [ ] More error handling?
 - [ ] Add performance benchmarks
 - [ ] Add mutation testing
 - [ ] Increase coverage > 90%
