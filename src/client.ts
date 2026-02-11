@@ -87,6 +87,8 @@ export class ClientUiState<T extends object> {
     address: SETTINGS.CLIENT_DEFAULT_TARGET_ADDRESS,
     reconnectTimeout: SETTINGS.CLIENT_DEFAULT_RECONNECT_TIMEOUT,
   };
+  private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  private isManualReconnect = false;
 
   private _connected = new BehaviorSubject<boolean>(false);
   /** Observable emitting when the connection state of the client changes */
@@ -147,9 +149,16 @@ export class ClientUiState<T extends object> {
     });
 
     this.ws.addEventListener("close", (ev) => {
-      setTimeout(() => {
-        console.log("Socket closed, reconnecting...");
-        this._connected.next(false);
+      this._connected.next(false);
+      
+      // Don't auto-reconnect if this was a manual reconnect
+      if (this.isManualReconnect) {
+        this.isManualReconnect = false;
+        return;
+      }
+      
+      console.log(`Socket closed, reconnecting in ${this.wsConfig.reconnectTimeout}ms...`);
+      this.reconnectTimeoutId = setTimeout(() => {
         this.connect();
       }, this.wsConfig.reconnectTimeout);
     });
@@ -402,6 +411,37 @@ export class ClientUiState<T extends object> {
       type: "complete",
     };
     this.ws?.send(JSON.stringify(msg));
+  }
+
+  /**
+   * Manually trigger a reconnection to the server.
+   * Closes the current WebSocket connection (if any) and immediately establishes a new one.
+   * This is useful when authentication status changes or connection parameters need to be refreshed.
+   * 
+   * Note: The connection will use the latest token from `getToken()` if configured.
+   * @example
+   * ```typescript
+   * // Reconnect after user logs in
+   * await userLogin();
+   * client.reconnect();
+   * ```
+   */
+  reconnect() {
+    // Clear any pending automatic reconnection
+    if (this.reconnectTimeoutId !== undefined) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = undefined;
+    }
+
+    // Close existing connection if present
+    if (this.ws) {
+      this.isManualReconnect = true;
+      this.ws.close();
+      this.ws = undefined;
+    }
+
+    this._connected.next(false);
+    this.connect();
   }
 
   /**
