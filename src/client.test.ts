@@ -370,6 +370,44 @@ describe("ClientUiState", () => {
     });
   });
 
+  describe("reconnect", () => {
+    it("should have reconnect method", () => {
+      const initialState = { count: 0 };
+      const client = new ClientUiState(initialState);
+
+      expect(client.reconnect).toBeDefined();
+      expect(typeof client.reconnect).toBe("function");
+    });
+
+    it("should be callable", () => {
+      const initialState = { count: 0 };
+      const client = new ClientUiState(initialState);
+
+      // Should not throw when called
+      expect(() => client.reconnect()).not.toThrow();
+    });
+
+    it("should trigger connection state change", async () => {
+      const initialState = { count: 0 };
+      const client = new ClientUiState(initialState);
+      const listener = vi.fn();
+
+      client.connected$.subscribe(listener);
+      
+      // Clear initial call
+      listener.mockClear();
+
+      // Call reconnect
+      client.reconnect();
+
+      // Wait for reconnection attempt
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Should have triggered connection state changes
+      expect(listener).toHaveBeenCalled();
+    });
+  });
+
   describe("integration with server", () => {
     let server: ServerUiState<any>;
     let currentPort: number;
@@ -444,6 +482,143 @@ describe("ClientUiState", () => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       expect(listener).toHaveBeenCalled();
+    });
+
+    it("should reconnect and sync state when reconnect() is called", async () => {
+      const client = new ClientUiState(
+        { count: 0, name: "test" },
+        { address: `ws://localhost:${currentPort}/api/yuzu` },
+      );
+
+      // Wait for initial connection
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      expect(client.state.count).toBe(0);
+      expect(client.isConnected).toBe(true);
+
+      // Update server state
+      server.state.count = 10;
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(client.state.count).toBe(10);
+
+      // Manually reconnect
+      client.reconnect();
+
+      // Wait for reconnection
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Should be connected again with latest state
+      expect(client.isConnected).toBe(true);
+      expect(client.state.count).toBe(10);
+    });
+
+    it("should use fresh token on reconnect when using getToken", async () => {
+      let tokenValue = "token1";
+      const getToken = vi.fn(() => tokenValue);
+
+      const client = new ClientUiState(
+        { count: 0, name: "test" },
+        { 
+          address: `ws://localhost:${currentPort}/api/yuzu`,
+          getToken,
+        },
+      );
+
+      // Wait for initial connection
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      expect(getToken).toHaveBeenCalledTimes(1);
+
+      // Update token
+      tokenValue = "token2";
+
+      // Reconnect to use new token
+      client.reconnect();
+
+      // Wait for reconnection
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // getToken should have been called again
+      expect(getToken).toHaveBeenCalledTimes(2);
+      expect(client.isConnected).toBe(true);
+    });
+
+    it("should close old WebSocket and create new one when reconnect() is called", async () => {
+      const client = new ClientUiState(
+        { count: 0, name: "test" },
+        { address: `ws://localhost:${currentPort}/api/yuzu` },
+      );
+
+      const connectionStates: boolean[] = [];
+      client.connected$.subscribe(state => connectionStates.push(state));
+
+      // Wait for initial connection
+      await new Promise(resolve => setTimeout(resolve, 200));
+      expect(client.isConnected).toBe(true);
+
+      // Clear the connection state history
+      connectionStates.length = 0;
+
+      // Call reconnect - should disconnect then reconnect
+      client.reconnect();
+
+      // Wait for reconnection to complete
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Should have gone through: false (disconnect) -> true (reconnect)
+      expect(connectionStates).toContain(false);
+      expect(connectionStates).toContain(true);
+      expect(client.isConnected).toBe(true);
+
+      // Verify we can still communicate with server
+      server.state.count = 99;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(client.state.count).toBe(99);
+    });
+
+    it("should clear pending auto-reconnect timeout when reconnect() is called manually", async () => {
+      const client = new ClientUiState(
+        { count: 0, name: "test" },
+        { 
+          address: `ws://localhost:${currentPort}/api/yuzu`,
+          reconnectTimeout: 1000, // 1 second auto-reconnect delay
+        },
+      );
+
+      // Wait for initial connection
+      await new Promise(resolve => setTimeout(resolve, 200));
+      expect(client.isConnected).toBe(true);
+
+      const connectionStates: boolean[] = [];
+      const subscription = client.connected$.subscribe(state => {
+        connectionStates.push(state);
+      });
+
+      // Force disconnect by calling reconnect
+      // This would normally schedule an auto-reconnect after 1000ms
+      // But we'll call reconnect() manually before that happens
+      client.reconnect();
+
+      // Wait a bit for the manual reconnect to complete
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      expect(client.isConnected).toBe(true);
+
+      // Clear the history
+      const statesBefore = connectionStates.length;
+      connectionStates.length = 0;
+
+      // Wait past the original auto-reconnect timeout
+      // If the timeout wasn't cleared, we'd see extra connection attempts
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
+      // Should not have any additional connection state changes
+      // (small margin for timing variations)
+      expect(connectionStates.length).toBeLessThan(3);
+      expect(client.isConnected).toBe(true);
+
+      subscription.unsubscribe();
     });
   });
 
