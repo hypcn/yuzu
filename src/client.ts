@@ -150,13 +150,13 @@ export class ClientUiState<T extends object> {
 
     this.ws.addEventListener("close", (ev) => {
       this._connected.next(false);
-      
+
       // Don't auto-reconnect if this was a manual reconnect
       if (this.isManualReconnect) {
         this.isManualReconnect = false;
         return;
       }
-      
+
       console.log(`Socket closed, reconnecting in ${this.wsConfig.reconnectTimeout}ms...`);
       this.reconnectTimeoutId = setTimeout(() => {
         this.connect();
@@ -417,7 +417,7 @@ export class ClientUiState<T extends object> {
    * Manually trigger a reconnection to the server.
    * Closes the current WebSocket connection (if any) and immediately establishes a new one.
    * This is useful when authentication status changes or connection parameters need to be refreshed.
-   * 
+   *
    * Note: The connection will use the latest token from `getToken()` if configured.
    * @example
    * ```typescript

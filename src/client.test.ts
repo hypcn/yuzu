@@ -393,7 +393,7 @@ describe("ClientUiState", () => {
       const listener = vi.fn();
 
       client.connected$.subscribe(listener);
-      
+
       // Clear initial call
       listener.mockClear();
 
@@ -520,7 +520,7 @@ describe("ClientUiState", () => {
 
       const client = new ClientUiState(
         { count: 0, name: "test" },
-        { 
+        {
           address: `ws://localhost:${currentPort}/api/yuzu`,
           getToken,
         },
@@ -581,7 +581,7 @@ describe("ClientUiState", () => {
     it("should clear pending auto-reconnect timeout when reconnect() is called manually", async () => {
       const client = new ClientUiState(
         { count: 0, name: "test" },
-        { 
+        {
           address: `ws://localhost:${currentPort}/api/yuzu`,
           reconnectTimeout: 1000, // 1 second auto-reconnect delay
         },

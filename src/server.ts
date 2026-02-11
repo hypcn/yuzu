@@ -132,7 +132,7 @@ export class ServerUiState<T extends object> {
    * ```typescript
    * // Monitor connected clients
    * console.log(`Connected clients: ${server.webSocketServer.clients.size}`);
-   * 
+   *
    * // Add custom event handlers
    * server.webSocketServer.on('connection', (ws) => {
    *   console.log('New client connected');

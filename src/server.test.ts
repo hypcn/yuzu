@@ -154,7 +154,7 @@ describe("ServerUiState", () => {
 
       // Connect a client
       const ws = new WebSocket(`ws://localhost:${port}/api/yuzu`);
-      
+
       await new Promise<void>((resolve) => {
         ws.on("open", () => {
           // Should now have 1 client
@@ -184,7 +184,7 @@ describe("ServerUiState", () => {
 
       // Connect a client
       const ws = new WebSocket(`ws://localhost:${port}/api/yuzu`);
-      
+
       await new Promise<void>((resolve) => {
         ws.on("open", () => {
           // Custom handler should have been called
