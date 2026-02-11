@@ -592,13 +592,7 @@ This starts a hot-reloading example of both client and server usage, and opens t
 
 - [ ] Add performance benchmarks
 - [ ] Add mutation testing
-- [ ] Increase coverage to 100%
+- [ ] Increase coverage > 90%
 - [ ] Add E2E tests for real-world scenarios
 - [ ] Consider optimisation for array operations
 - [ ] ? Add CI/CD
-
-### Outdated Dependencies
-
-The following dependencies require ESM:
-
-- ws@^8
