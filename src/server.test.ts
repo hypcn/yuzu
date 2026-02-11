@@ -123,6 +123,97 @@ describe("ServerUiState", () => {
     });
   });
 
+  describe("webSocketServer getter", () => {
+    it("should expose the underlying WebSocket server", () => {
+      const initialState = { count: 0 };
+      const config: ServerUiStateConfig = {
+        serverRef: httpServer,
+        serverConfig: undefined,
+        logger: mockLogger,
+      };
+
+      const server = new ServerUiState(initialState, config);
+
+      expect(server.webSocketServer).toBeDefined();
+      expect(server.webSocketServer).toBeInstanceOf(WebSocket.Server);
+    });
+
+    it("should allow access to WebSocket server clients", async () => {
+      const initialState = { count: 0 };
+      const port = 3300;
+      const config: ServerUiStateConfig = {
+        serverRef: undefined,
+        serverConfig: { port },
+        logger: mockLogger,
+      };
+
+      const server = new ServerUiState(initialState, config);
+
+      // Initially no clients
+      expect(server.webSocketServer.clients.size).toBe(0);
+
+      // Connect a client
+      const ws = new WebSocket(`ws://localhost:${port}/api/yuzu`);
+      
+      await new Promise<void>((resolve) => {
+        ws.on("open", () => {
+          // Should now have 1 client
+          expect(server.webSocketServer.clients.size).toBe(1);
+          ws.close();
+          resolve();
+        });
+      });
+
+      await server.close();
+    });
+
+    it("should allow adding custom event handlers to WebSocket server", async () => {
+      const initialState = { count: 0 };
+      const port = 3301;
+      const config: ServerUiStateConfig = {
+        serverRef: undefined,
+        serverConfig: { port },
+        logger: mockLogger,
+      };
+
+      const server = new ServerUiState(initialState, config);
+      const connectionHandler = vi.fn();
+
+      // Add custom event handler
+      server.webSocketServer.on("connection", connectionHandler);
+
+      // Connect a client
+      const ws = new WebSocket(`ws://localhost:${port}/api/yuzu`);
+      
+      await new Promise<void>((resolve) => {
+        ws.on("open", () => {
+          // Custom handler should have been called
+          expect(connectionHandler).toHaveBeenCalled();
+          ws.close();
+          resolve();
+        });
+      });
+
+      await server.close();
+    });
+
+    it("should allow monitoring WebSocket server state", () => {
+      const initialState = { count: 0 };
+      const config: ServerUiStateConfig = {
+        serverRef: httpServer,
+        serverConfig: undefined,
+        logger: mockLogger,
+      };
+
+      const server = new ServerUiState(initialState, config);
+
+      // Should be able to access various WebSocket server properties
+      expect(server.webSocketServer.options).toBeDefined();
+      expect(server.webSocketServer.clients).toBeDefined();
+      expect(server.webSocketServer.address()).toBeDefined();
+    });
+  });
+
   describe("state proxy behavior", () => {
     it("should return initial state", () => {
       const initialState = { count: 0, name: "test" };

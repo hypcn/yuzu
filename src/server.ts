@@ -125,6 +125,22 @@ export class ServerUiState<T extends object> {
   public get state() { return this._state; }
 
   private wss: WebSocket.Server;
+  /**
+   * The underlying WebSocket server instance.
+   * Provides access to the raw WebSocket.Server for advanced usage, debugging, and monitoring.
+   * @example
+   * ```typescript
+   * // Monitor connected clients
+   * console.log(`Connected clients: ${server.webSocketServer.clients.size}`);
+   * 
+   * // Add custom event handlers
+   * server.webSocketServer.on('connection', (ws) => {
+   *   console.log('New client connected');
+   * });
+   * ```
+   */
+  public get webSocketServer() { return this.wss; }
+
   private httpServer: Server | undefined;
 
   private patchBatch: StatePatch[] = [];
