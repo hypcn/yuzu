@@ -14,7 +14,7 @@ CI UIs are required to display the status of devices connected to the system in 
 
 Yuzu provides a mechanism for Hypericon Controller Gateways to push small amounts of realtime state to all connected clients.
 
-![](./docs/diagrams/overview.drawio.svg)
+<!-- ![](./docs/diagrams/overview.drawio.svg) -->
 
 ## Quickstart
 
