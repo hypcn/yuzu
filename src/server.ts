@@ -1,6 +1,6 @@
 import { IncomingMessage, Server } from "http";
 import { inspect } from "util";
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer, PerMessageDeflateOptions } from "ws";
 import { ClientUiMessage, MsgSendComplete, MsgSendPatch, MsgSendPatchBatch, PatchableValueType, StatePatch, YUZU_SETTINGS as SETTINGS } from "./shared";
 
 // let LOG_GET = false;
@@ -50,6 +50,21 @@ export interface ServerUiStateConfig {
    * @default 0
    */
   batchDelay?: number,
+  /**
+   * Enable or configure per-message deflate compression for WebSocket messages.
+   * Can reduce bandwidth usage by 60-80% for text data.
+   * Set to true for default compression, false to disable, or provide an object for fine-tuned configuration.
+   * @default false
+   * @example
+   * ```typescript
+   * // Enable with defaults
+   * { perMessageDeflate: true }
+   *
+   * // Configure compression threshold (only compress messages larger than 1KB)
+   * { perMessageDeflate: { threshold: 1024 } }
+   * ```
+   */
+  perMessageDeflate?: boolean | PerMessageDeflateOptions,
   /** Logging levels to enable for the default logger (debug, log, warn, error) */
   logLevels?: YuzuLoggerLevel[],
   /** Custom logger implementation to replace the default console-based logger */
@@ -124,10 +139,10 @@ export class ServerUiState<T extends object> {
    */
   public get state() { return this._state; }
 
-  private wss: WebSocket.Server;
+  private wss: WebSocketServer;
   /**
    * The underlying WebSocket server instance.
-   * Provides access to the raw WebSocket.Server for advanced usage, debugging, and monitoring.
+   * Provides access to the raw WebSocketServer for advanced usage, debugging, and monitoring.
    * @example
    * ```typescript
    * // Monitor connected clients
@@ -237,11 +252,12 @@ export class ServerUiState<T extends object> {
       }
       : undefined;
 
-    this.wss = new WebSocket.Server({
+    this.wss = new WebSocketServer({
       server: existingServer ? config.serverRef : undefined,
       port: existingServer ? undefined : config.serverConfig?.port,
       path: path.startsWith("/") ? path : `/${path}`,
       verifyClient,
+      perMessageDeflate: config.perMessageDeflate,
     });
 
     // Store HTTP server reference if we created one (for cleanup)

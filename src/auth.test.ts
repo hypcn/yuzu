@@ -249,15 +249,37 @@ describe("Authentication", () => {
   });
 
   describe("Client authentication", () => {
+    let clients: ClientUiState<any>[];
+
+    beforeEach(() => {
+      clients = [];
+    });
+
+    afterEach(() => {
+      // Disconnect all clients to prevent reconnection attempts
+      for (const client of clients) {
+        client.disconnect();
+      }
+    });
+
+    function createClient<T extends object>(initial: T, config?: any): ClientUiState<T> {
+      const fullConfig = config || {};
+      if (!fullConfig.address) {
+        fullConfig.address = `ws://localhost:${TEST_PORT}/api/yuzu`;
+      }
+      const client = new ClientUiState(initial, fullConfig);
+      clients.push(client);
+      return client;
+    }
+
     it("should connect without token when not provided", async () => {
       serverUiState = new ServerUiState(
         { count: 0 },
         { serverConfig: { port: TEST_PORT } },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        { address: `ws://localhost:${TEST_PORT}/api/yuzu` },
       );
 
       await new Promise<void>((resolve) => {
@@ -284,12 +306,9 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          token: "mytoken123",
-        },
+        { token: "mytoken123" },
       );
 
       await new Promise<void>((resolve) => {
@@ -319,12 +338,9 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          getToken,
-        },
+        { getToken },
       );
 
       await new Promise<void>((resolve) => {
@@ -355,12 +371,9 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          getToken,
-        },
+        { getToken },
       );
 
       await new Promise<void>((resolve) => {
@@ -391,12 +404,9 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          token: specialToken,
-        },
+        { token: specialToken },
       );
 
       await new Promise<void>((resolve) => {
@@ -425,7 +435,7 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
         {
           address: `ws://localhost:${TEST_PORT}/api/yuzu?existing=param`,
@@ -461,12 +471,9 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          token: "badtoken",
-        },
+        { token: "badtoken" },
       );
 
       await new Promise<void>((resolve) => {
@@ -479,6 +486,29 @@ describe("Authentication", () => {
   });
 
   describe("Real-world authentication scenarios", () => {
+    let clients: ClientUiState<any>[];
+
+    beforeEach(() => {
+      clients = [];
+    });
+
+    afterEach(() => {
+      // Disconnect all clients to prevent reconnection attempts
+      for (const client of clients) {
+        client.disconnect();
+      }
+    });
+
+    function createClient<T extends object>(initial: T, config?: any): ClientUiState<T> {
+      const fullConfig = config || {};
+      if (!fullConfig.address) {
+        fullConfig.address = `ws://localhost:${TEST_PORT}/api/yuzu`;
+      }
+      const client = new ClientUiState(initial, fullConfig);
+      clients.push(client);
+      return client;
+    }
+
     it("should support JWT-style authentication", async () => {
       // Mock JWT verification
       const verifyJWT = vi.fn().mockImplementation((token: string) => {
@@ -504,12 +534,9 @@ describe("Authentication", () => {
       );
 
       // Valid token
-      const validClient = new ClientUiState(
+      const validClient = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          token: "valid.jwt.token",
-        },
+        { token: "valid.jwt.token" },
       );
 
       await new Promise<void>((resolve) => {
@@ -542,12 +569,9 @@ describe("Authentication", () => {
         },
       );
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0 },
-        {
-          address: `ws://localhost:${TEST_PORT}/api/yuzu`,
-          getToken,
-        },
+        { getToken },
       );
 
       await new Promise<void>((resolve) => {

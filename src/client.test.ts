@@ -410,12 +410,14 @@ describe("ClientUiState", () => {
 
   describe("integration with server", () => {
     let server: ServerUiState<any>;
+    let clients: ClientUiState<any>[];
     let currentPort: number;
     let portCounter = 3200; // Start from base port and increment
 
     beforeEach(() => {
       // Use incrementing port to avoid conflicts between tests
       currentPort = portCounter++;
+      clients = [];
       const initialState = { count: 0, name: "test" };
       server = new ServerUiState(initialState, {
         serverRef: undefined,
@@ -429,10 +431,31 @@ describe("ClientUiState", () => {
       });
     });
 
+    afterEach(async () => {
+      // Disconnect all clients first
+      for (const client of clients) {
+        client.disconnect();
+      }
+
+      // Clean up server
+      if (server) {
+        await server.close();
+      }
+    });
+
+    function createClient<T extends object>(initial: T, config?: any): ClientUiState<T> {
+      const fullConfig = config || {};
+      if (!fullConfig.address) {
+        fullConfig.address = `ws://localhost:${currentPort}/api/yuzu`;
+      }
+      const client = new ClientUiState(initial, fullConfig);
+      clients.push(client);
+      return client;
+    }
+
     it("should receive complete state from server", async () => {
-      const client = new ClientUiState(
+      const client = createClient(
         { count: -1, name: "initial" },
-        { address: `ws://localhost:${currentPort}/api/yuzu` },
       );
 
       // Wait for connection and state sync
@@ -441,11 +464,9 @@ describe("ClientUiState", () => {
       expect(client.state.count).toBe(0);
       expect(client.state.name).toBe("test");
     });
-
-    it("should receive patch updates from server", async () => {
-      const client = new ClientUiState(
+it("should receive patch updates from server", async () => {
+      const client = createClient(
         { count: 0, name: "test" },
-        { address: `ws://localhost:${currentPort}/api/yuzu` },
       );
 
       const listener = vi.fn();
@@ -465,9 +486,8 @@ describe("ClientUiState", () => {
     });
 
     it("should notify listeners when state is updated", async () => {
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0, name: "test" },
-        { address: `ws://localhost:${currentPort}/api/yuzu` },
       );
 
       const listener = vi.fn();
@@ -486,9 +506,8 @@ describe("ClientUiState", () => {
     });
 
     it("should reconnect and sync state when reconnect() is called", async () => {
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0, name: "test" },
-        { address: `ws://localhost:${currentPort}/api/yuzu` },
       );
 
       // Wait for initial connection
@@ -518,12 +537,9 @@ describe("ClientUiState", () => {
       let tokenValue = "token1";
       const getToken = vi.fn(() => tokenValue);
 
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0, name: "test" },
-        {
-          address: `ws://localhost:${currentPort}/api/yuzu`,
-          getToken,
-        },
+        { getToken },
       );
 
       // Wait for initial connection
@@ -546,9 +562,8 @@ describe("ClientUiState", () => {
     });
 
     it("should close old WebSocket and create new one when reconnect() is called", async () => {
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0, name: "test" },
-        { address: `ws://localhost:${currentPort}/api/yuzu` },
       );
 
       const connectionStates: boolean[] = [];
@@ -579,12 +594,9 @@ describe("ClientUiState", () => {
     });
 
     it("should clear pending auto-reconnect timeout when reconnect() is called manually", async () => {
-      const client = new ClientUiState(
+      const client = createClient(
         { count: 0, name: "test" },
-        {
-          address: `ws://localhost:${currentPort}/api/yuzu`,
-          reconnectTimeout: 1000, // 1 second auto-reconnect delay
-        },
+        { reconnectTimeout: 1000 }, // 1 second auto-reconnect delay
       );
 
       // Wait for initial connection

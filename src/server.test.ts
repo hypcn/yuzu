@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Server } from "http";
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import { ServerUiState, ServerUiStateConfig, YuzuLogger } from "./server";
 import type { MsgSendComplete, MsgSendPatch, MsgSendPatchBatch } from "./shared";
 
 describe("ServerUiState", () => {
   let httpServer: Server;
   let mockLogger: YuzuLogger;
+  let servers: ServerUiState<any>[];
 
   beforeEach(() => {
     httpServer = new Server();
+    servers = [];
     mockLogger = {
       debug: vi.fn(),
       log: vi.fn(),
@@ -19,12 +21,23 @@ describe("ServerUiState", () => {
   });
 
   afterEach(async () => {
+    // Close all ServerUiState instances first
+    await Promise.all(servers.map(s => s.close()));
+
+    // Then close the HTTP server if still open
     if (httpServer.listening) {
       await new Promise<void>((resolve) => {
         httpServer.close(() => resolve());
       });
     }
   });
+
+  // Helper function to create and track ServerUiState instances
+  function createServer<T extends object>(initial: T, config: ServerUiStateConfig): ServerUiState<T> {
+    const server = new ServerUiState(initial, config);
+    servers.push(server);
+    return server;
+  }
 
   describe("constructor", () => {
     it("should create server with existing HTTP server", () => {
@@ -35,7 +48,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
       expect(server.state).toEqual(initialState);
@@ -49,7 +62,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
       expect(server.state).toEqual(initialState);
@@ -77,7 +90,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
     });
@@ -91,7 +104,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
     });
@@ -103,7 +116,7 @@ describe("ServerUiState", () => {
         serverConfig: undefined,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
     });
@@ -117,7 +130,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
     });
@@ -132,10 +145,10 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server.webSocketServer).toBeDefined();
-      expect(server.webSocketServer).toBeInstanceOf(WebSocket.Server);
+      expect(server.webSocketServer).toBeInstanceOf(WebSocketServer);
     });
 
     it("should allow access to WebSocket server clients", async () => {
@@ -147,7 +160,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       // Initially no clients
       expect(server.webSocketServer.clients.size).toBe(0);
@@ -163,8 +176,6 @@ describe("ServerUiState", () => {
           resolve();
         });
       });
-
-      await server.close();
     });
 
     it("should allow adding custom event handlers to WebSocket server", async () => {
@@ -176,7 +187,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
       const connectionHandler = vi.fn();
 
       // Add custom event handler
@@ -193,8 +204,6 @@ describe("ServerUiState", () => {
           resolve();
         });
       });
-
-      await server.close();
     });
 
     it("should allow monitoring WebSocket server state", () => {
@@ -205,7 +214,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       // Should be able to access various WebSocket server properties
       expect(server.webSocketServer.options).toBeDefined();
@@ -223,7 +232,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server.state.count).toBe(0);
       expect(server.state.name).toBe("test");
@@ -245,7 +254,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server.state.user.name).toBe("John");
       expect(server.state.user.age).toBe(30);
@@ -260,7 +269,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       server.state.count = 5;
 
@@ -282,7 +291,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       server.state.user.name = "Jane";
       server.state.user.profile.bio = "Designer";
@@ -299,7 +308,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server.state.items).toEqual([1, 2, 3]);
 
@@ -316,7 +325,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server.state.value).toBe(null);
 
@@ -340,7 +349,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       // Wait a bit for server to start
       await new Promise<void>((resolve, reject) => {
@@ -369,7 +378,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       await new Promise<void>((resolve, reject) => {
         setTimeout(() => {
@@ -403,7 +412,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       await new Promise<void>((resolve, reject) => {
         setTimeout(() => {
@@ -445,7 +454,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       await new Promise<void>((resolve, reject) => {
         setTimeout(() => {
@@ -487,7 +496,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       // Logger should be used during construction
       expect(mockLogger.log).toBeDefined();
@@ -501,7 +510,7 @@ describe("ServerUiState", () => {
         logLevels: ["error"],
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server).toBeInstanceOf(ServerUiState);
     });
@@ -526,7 +535,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       expect(server.state.level1.level2.level3.level4.value).toBe("deep");
 
@@ -545,7 +554,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       server.state.devices["device1"] = { status: "active" };
       server.state.devices["device2"] = { status: "inactive" };
@@ -573,7 +582,7 @@ describe("ServerUiState", () => {
         logger: mockLogger,
       };
 
-      const server = new ServerUiState(initialState, config);
+      const server = createServer(initialState, config);
 
       server.state.items.push({ id: "item1", value: 10 });
       server.state.items.push({ id: "item2", value: 20 });

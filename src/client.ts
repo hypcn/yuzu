@@ -445,6 +445,33 @@ export class ClientUiState<T extends object> {
   }
 
   /**
+   * Disconnect from the server and stop automatic reconnection.
+   * This permanently closes the WebSocket connection without attempting to reconnect.
+   * Use this when you want to cleanly shut down the client connection.
+   * @example
+   * ```typescript
+   * // Clean up before unmounting/destroying
+   * client.disconnect();
+   * ```
+   */
+  disconnect() {
+    // Clear any pending automatic reconnection
+    if (this.reconnectTimeoutId !== undefined) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = undefined;
+    }
+
+    // Close WebSocket connection if present
+    if (this.ws) {
+      this.isManualReconnect = true; // Prevent auto-reconnect
+      this.ws.close();
+      this.ws = undefined;
+    }
+
+    this._connected.next(false);
+  }
+
+  /**
    * Read the value at the specified path in the state tree.
    * Throws an error if the path does not exist.
    * @param path - Array of string keys representing the path to the value

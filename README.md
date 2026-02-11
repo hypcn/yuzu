@@ -103,6 +103,8 @@ export class UiStateService {
     this.uiState = new ServerUiState(INITIAL_UI_STATE, {
       serverRef: opts.server,
       serverConfig: opts.port ? { port: opts.port } : undefined,
+      // Optional: Enable WebSocket compression (can reduce bandwidth by 60-80%)
+      perMessageDeflate: true,
     });
 
     // Example random position every 1,000 ms
@@ -223,6 +225,7 @@ const uiState = new ServerUiState(INITIAL_UI_STATE, {
 ```
 
 The `AuthenticationInfo` object provides:
+
 - `request`: The incoming HTTP request (`IncomingMessage`)
 - `queryParams`: Parsed query parameters (`URLSearchParams`)
 - `origin`: The `Origin` header value (if present)
@@ -475,30 +478,35 @@ const sub4 = client.state$.shadeControllers["id1"].shades[5].subscribe(v => { ..
 Here are the results of modifying the values at the given paths:
 
 Modifying lighting status - updated path: `[ "lighting", "status" ]`
+
 - sub1 = not triggered
 - sub2 = not triggered
 - sub3 = not triggered
 - sub4 = not triggered
 
 Modifying controller 2 status - updated path: `[ "shadeControllers", "id2", "status" ]`
+
 - sub1 = triggered
 - sub2 = not triggered
 - sub3 = not triggered
 - sub4 = not triggered
 
 Modifying controller 1 status - updated path: `[ "shadeControllers", "id1", "status" ]`
+
 - sub1 = triggered
 - sub2 = triggered
 - sub3 = not triggered
 - sub4 = not triggered
 
 Modifying controller 1 shade 4 status - updated path: `[ "shadeControllers", "id1", "shades", "4", "status" ]`
+
 - sub1 = triggered
 - sub2 = triggered
 - sub3 = triggered
 - sub4 = not triggered
 
 Modifying controller 1 shade 5 status - updated path: `[ "shadeControllers", "id1", "shades", "5", "status" ]`
+
 - sub1 = triggered
 - sub2 = triggered
 - sub3 = triggered
