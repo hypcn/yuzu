@@ -1,6 +1,13 @@
 
 # Yuzu
 
+[![npm version](https://img.shields.io/npm/v/@hypericon/yuzu.svg)](https://www.npmjs.com/package/@hypericon/yuzu)
+[![npm downloads](https://img.shields.io/npm/dm/@hypericon/yuzu.svg)](https://www.npmjs.com/package/@hypericon/yuzu)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Test Coverage](https://img.shields.io/badge/coverage-84.45%25-yellowgreen.svg)](https://github.com/hypcn/yuzu)
+[![Tests](https://img.shields.io/badge/tests-126%20passing-brightgreen.svg)](https://github.com/hypcn/yuzu)
+
 UI State Updates -> UISU -> Yuzu
 
 CI UIs are required to display the status of devices connected to the system in real time. This may be light levels, shade positions, monitoring alerts, etc.
