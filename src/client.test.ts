@@ -411,10 +411,11 @@ describe("ClientUiState", () => {
   describe("integration with server", () => {
     let server: ServerUiState<any>;
     let currentPort: number;
+    let portCounter = 3200; // Start from base port and increment
 
     beforeEach(() => {
-      // Use random port to avoid conflicts between tests
-      currentPort = 3200 + Math.floor(Math.random() * 100);
+      // Use incrementing port to avoid conflicts between tests
+      currentPort = portCounter++;
       const initialState = { count: 0, name: "test" };
       server = new ServerUiState(initialState, {
         serverRef: undefined,
