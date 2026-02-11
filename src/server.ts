@@ -308,15 +308,20 @@ export class ServerUiState<T extends object> {
   }
 
   /**
-   * Set the value of the internal state object, wrapping it in a proxy handler
-   * to capture reads and writes to and from any nested depth within the state
+   * Set the value of the internal state object, wrapping it in a proxy handler.
+   * The proxy captures reads and writes at any nested depth within the state,
+   * automatically broadcasting changes to all connected clients via WebSocket.
+   * @param state - The initial state object to wrap with change detection
+   * @internal
    */
   protected setState(state: T) {
 
     /**
-     * Funtion that returns the proxy handler wrapping the state object, or object nested within that object.
+     * Function that returns the proxy handler wrapping the state object, or object nested within that object.
      * Returning the proxy handler from a function enables the passing of the current "path" of keys
      * to the current depth, so handler methods can emit the complete path to the targeted value.
+     * @param path - Current path in the state tree
+     * @internal
      */
     const buildProxyHandler = (path: string[]) => {
 
@@ -364,6 +369,12 @@ export class ServerUiState<T extends object> {
   //   console.log(...msgs);
   // }
 
+  /**
+   * Set up WebSocket connection listeners.
+   * Handles new connections, incoming messages, disconnections, and errors.
+   * Each new client automatically receives the complete state upon connection.
+   * @internal
+   */
   private listen() {
     this.wss.on("connection", (ws, req) => {
       this.logger.log(`New connection from ${req.headers.origin}`);
@@ -384,6 +395,13 @@ export class ServerUiState<T extends object> {
     });
   }
 
+  /**
+   * Handle an incoming message from a connected client.
+   * Currently supports "complete" message type for full state requests.
+   * @param msg - The parsed message from the client
+   * @param ws - The WebSocket connection that sent the message
+   * @internal
+   */
   private handleMessage(msg: ClientUiMessage, ws: WebSocket) {
 
     if (msg.type === "complete") {
@@ -399,6 +417,14 @@ export class ServerUiState<T extends object> {
 
   }
 
+  /**
+   * Send a state patch to all connected clients.
+   * If batching is disabled (batchDelay <= 0), sends immediately as a single patch.
+   * If batching is enabled, adds the patch to the current batch for later transmission.
+   * @param path - Array of keys representing the path in the state tree that changed
+   * @param value - The new value at the specified path
+   * @internal
+   */
   private sendPatch(path: string[], value: PatchableValueType) {
     if (this.batchDelay <= 0) {
       const msg: MsgSendPatch = {
@@ -417,6 +443,12 @@ export class ServerUiState<T extends object> {
     }
   }
 
+  /**
+   * Send the accumulated batch of patches to all connected clients.
+   * Clears the batch and resets the timeout after sending.
+   * Called automatically after the configured batchDelay elapses.
+   * @internal
+   */
   private sendBatch() {
     if (this.patchBatch.length < 1) return;
 
@@ -434,7 +466,11 @@ export class ServerUiState<T extends object> {
   }
 
   /**
-   * Send a stringified message to all connected clients
+   * Send a stringified message to all connected clients via WebSocket.
+   * Only sends to clients whose connections are in OPEN state.
+   * Logs errors if message delivery fails.
+   * @param message - JSON-stringified message to broadcast
+   * @internal
    */
   private send(message: string) {
 

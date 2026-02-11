@@ -118,7 +118,10 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Set up connection to the specified WS server, and reload whenever the connection is dropped
+   * Establish WebSocket connection to the Yuzu server.
+   * Sets up all event handlers (open, close, error, message) and implements auto-reconnection logic.
+   * Authentication tokens are automatically appended as query parameters if configured.
+   * @internal
    */
   private async connect() {
     console.log("Connecting...");
@@ -174,7 +177,11 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Handle a socket message received from the server
+   * Handle a socket message received from the server.
+   * Processes complete state updates, single patches, or batched patches.
+   * Updates local state and notifies relevant listeners.
+   * @param msg - The message received from the server
+   * @internal
    */
   private handleMessage(msg: ServerUiMessage) {
 
@@ -201,8 +208,10 @@ export class ClientUiState<T extends object> {
   /**
    * Set the values of the private state and subscribable state members with the given new value.
    * The subscribable state member has proxy handlers set up to add subscribe methods recursively
-   * when reading any value.
-   * Returns the subscribable state to satisfy the compiler in the constructor.
+   * when reading any value. This enables the state$.property.subscribe() pattern.
+   * @param state - The new state object to set
+   * @returns The subscribable state proxy to satisfy the compiler in the constructor
+   * @internal
    */
   private setState(state: T) {
     this._state = state;
@@ -282,7 +291,12 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Patch the state and subscribable state members at the specified path
+   * Patch the state and subscribable state members at the specified path.
+   * Traverses the state tree to the target location and updates the value.
+   * Used when receiving patch messages from the server.
+   * @param path - Array of keys representing the path in the state tree
+   * @param value - The new value to set at the specified path
+   * @internal
    */
   private patchState(path: string[], value: any) {
 
@@ -300,7 +314,12 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Add the given listener function to the list of listeners, returning a subscription
+   * Add the given listener function to the list of listeners, returning a subscription.
+   * Internal method used by state$ subscription handlers.
+   * @param listenerFn - The callback function to invoke when the state at the given path changes
+   * @param path - Array of keys representing the path in the state tree to monitor
+   * @returns A YuzuSubscription that can be used to unsubscribe
+   * @internal
    */
   private subscribe(listenerFn: StateListenerFn, path: string[]): YuzuSubscription {
     this.listeners.push({
@@ -314,7 +333,10 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Notify all listeners of a change, usually in response to a complete reload
+   * Notify all listeners of a change, usually in response to a complete reload.
+   * Triggers all registered listeners with their respective current state values.
+   * Used when the entire state is refreshed from the server.
+   * @internal
    */
   private notifyAllListeners() {
     this.listeners.forEach(listener => {
@@ -327,8 +349,11 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Nofify all listeners triggered by an update to the specified path with
-   * the current value at each triggered listener's target path within the state
+   * Notify all listeners triggered by an update to the specified path.
+   * Only listeners monitoring this path or its ancestors are notified.
+   * Each listener receives the current value at their registered path.
+   * @param path - Array of keys representing the path that was modified
+   * @internal
    */
   private notifyListeners(path: string[]) {
 
@@ -347,11 +372,15 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   *
+   * Notify listeners for multiple path updates in a single batch.
+   * Deduplicates triggered listeners to ensure each is called only once,
+   * even if multiple paths affect the same listener.
+   * @param paths - Array of paths that were modified in the batch update
+   * @internal
    */
   private notifyListenersOnce(paths: string[][]) {
 
-    // TODO: deduplicate parameter list
+    // Find deduplicated listeners
 
     // Find the deduplicated list of triggered subscription listeners
     // using method from notifyListeners
@@ -377,7 +406,9 @@ export class ClientUiState<T extends object> {
 
   /**
    * Remove the state listener from the list by matching the given listener function.
-   * Used to unsubscribe from subscriptions.
+   * Used to unsubscribe from subscriptions when a YuzuSubscription.unsubscribe() is called.
+   * @param listener - The listener function to remove from the internal listeners array
+   * @internal
    */
   private removeListener(listener: StateListenerFn) {
     this.listeners = this.listeners.filter(l => l.listenerFn !== listener);
@@ -522,7 +553,7 @@ export class ClientUiState<T extends object> {
    * The path must exist at the time of subscription, or an error will be thrown.
    * The listener will be called whenever the value at this path (or any nested value) changes.
    * @param path - Array of string keys representing the path to listen to
-   * @param listener - Function called when the value at the path changes
+   * @param listener - Function called when the value at the path changes. Receives (value, path).
    * @returns A YuzuSubscription that can be unsubscribed
    * @throws Error if the path does not exist in the state tree
    * @example
@@ -549,7 +580,7 @@ export class ClientUiState<T extends object> {
    * Unlike onChangeExisting, this does not require the path to exist at subscription time.
    * Useful for subscribing to optional or dynamically created state keys.
    * @param path - Array of string keys representing the path to listen to
-   * @param listener - Function called when the value at the path changes
+   * @param listener - Function called when the value at the path changes. Receives (value, path).
    * @returns A YuzuSubscription that can be unsubscribed
    * @example
    * ```typescript
@@ -568,15 +599,15 @@ export class ClientUiState<T extends object> {
   }
 
   /**
-   * Subscribe to all changes to the state tree.
-   * The listener will be called whenever any value in the state changes.
-   * @param listener - Function called when any part of the state changes
-   * @returns A YuzuSubscription that can be unsubscribed
+   * Subscribe to all state changes regardless of which path is modified.
+   * The listener receives the updated value and the path that was changed.
+   * Useful for debugging or implementing global state change handlers.
+   * @param listener - Callback function invoked on any state change. Receives (value, path).
+   * @returns A YuzuSubscription that can be used to unsubscribe
    * @example
    * ```typescript
    * const sub = client.onAny((value, path) => {
-   *   console.log("State changed at path:", path.join("."));
-   *   // Trigger UI redraw
+   *   console.log(`State changed at ${path.join('.')}: `, value);
    * });
    * ```
    */
