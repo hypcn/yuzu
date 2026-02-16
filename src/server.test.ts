@@ -724,7 +724,7 @@ describe("ServerUiState", () => {
       server.handleClientMessage(clientMessage);
 
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        "handleClientMessage() should only be used in externalTransport mode"
+        "handleClientMessage() should only be used in externalTransport mode",
       );
     });
 
@@ -743,7 +743,7 @@ describe("ServerUiState", () => {
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         "Error parsing client message:",
-        expect.any(Error)
+        expect.any(Error),
       );
     });
 

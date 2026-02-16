@@ -69,7 +69,7 @@ export interface ClientUiStateSocketConfig {
    * - You must provide an onMessage callback to handle outgoing client messages
    * - Use handleServerMessage() to process incoming messages from the server
    * - Connection state management (connected$, isConnected) is disabled
-   * 
+   *
    * This allows you to use your own transport layer (existing WebSocket, HTTP, WebRTC, etc.)
    * @default false
    * @example
@@ -78,7 +78,7 @@ export interface ClientUiStateSocketConfig {
    *   externalTransport: true,
    *   onMessage: (message) => myWebSocket.send(message)
    * });
-   * 
+   *
    * myWebSocket.on('message', (data) => {
    *   client.handleServerMessage(data);
    * });
@@ -132,12 +132,12 @@ export class ClientUiState<T extends object> {
   private onMessageCallback?: (message: string) => void;
 
   private _connected = new BehaviorSubject<boolean>(false);
-  /** 
+  /**
    * Observable emitting when the connection state of the client changes.
    * Always emits `false` in externalTransport mode.
    */
   public connected$ = this._connected.asObservable();
-  /** 
+  /**
    * Whether the client is currently connected to a Yuzu server.
    * Always returns `false` in externalTransport mode.
    */
@@ -156,11 +156,11 @@ export class ClientUiState<T extends object> {
    *   { count: 0, name: "default" },
    *   { address: "ws://localhost:3000/api/yuzu" }
    * );
-   * 
+   *
    * // External transport mode
    * const client = new ClientUiState(
    *   { count: 0, name: "default" },
-   *   { 
+   *   {
    *     externalTransport: true,
    *     onMessage: (msg) => myTransport.send(msg)
    *   }
@@ -173,7 +173,7 @@ export class ClientUiState<T extends object> {
 
     this.wsConfig = Object.assign(this.wsConfig, config);
     this.externalTransport = this.wsConfig.externalTransport || false;
-    
+
     if (this.externalTransport) {
       // External transport mode
       if (!this.wsConfig.onMessage) {
@@ -196,7 +196,7 @@ export class ClientUiState<T extends object> {
    */
   private async connect() {
     if (this.externalTransport) return;
-    
+
     console.log("Connecting...");
 
     // Build connection URL with authentication token if provided
@@ -294,7 +294,7 @@ export class ClientUiState<T extends object> {
       console.warn("handleServerMessage() should only be used in externalTransport mode");
       return;
     }
-    
+
     try {
       const msg = JSON.parse(message) as ServerUiMessage;
       this.handleMessage(msg);
@@ -541,7 +541,7 @@ export class ClientUiState<T extends object> {
       type: "complete",
     };
     const msgString = JSON.stringify(msg);
-    
+
     if (this.externalTransport) {
       this.onMessageCallback?.(msgString);
     } else {
@@ -568,7 +568,7 @@ export class ClientUiState<T extends object> {
       console.warn("reconnect() does nothing in externalTransport mode");
       return;
     }
-    
+
     // Clear any pending automatic reconnection
     if (this.reconnectTimeoutId !== undefined) {
       clearTimeout(this.reconnectTimeoutId);
@@ -602,7 +602,7 @@ export class ClientUiState<T extends object> {
       console.warn("disconnect() does nothing in externalTransport mode");
       return;
     }
-    
+
     // Clear any pending automatic reconnection
     if (this.reconnectTimeoutId !== undefined) {
       clearTimeout(this.reconnectTimeoutId);

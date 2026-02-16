@@ -839,7 +839,7 @@ it("should receive patch updates from server", async () => {
       client.handleServerMessage(JSON.stringify(serverMessage));
 
       expect(warnSpy).toHaveBeenCalledWith(
-        "handleServerMessage() should only be used in externalTransport mode"
+        "handleServerMessage() should only be used in externalTransport mode",
       );
 
       warnSpy.mockRestore();
@@ -859,7 +859,7 @@ it("should receive patch updates from server", async () => {
 
       expect(errorSpy).toHaveBeenCalledWith(
         "Error parsing server message:",
-        expect.any(Error)
+        expect.any(Error),
       );
 
       errorSpy.mockRestore();
@@ -901,7 +901,7 @@ it("should receive patch updates from server", async () => {
       client.reconnect();
 
       expect(warnSpy).toHaveBeenCalledWith(
-        "reconnect() does nothing in externalTransport mode"
+        "reconnect() does nothing in externalTransport mode",
       );
       expect(client.isConnected).toBe(false);
 
@@ -921,7 +921,7 @@ it("should receive patch updates from server", async () => {
       client.disconnect();
 
       expect(warnSpy).toHaveBeenCalledWith(
-        "disconnect() does nothing in externalTransport mode"
+        "disconnect() does nothing in externalTransport mode",
       );
       expect(client.isConnected).toBe(false);
 

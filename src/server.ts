@@ -95,7 +95,7 @@ export interface ServerUiStateConfig {
    * - You must provide an onMessage callback to handle incoming client messages
    * - Use sendToClient() to manually send messages
    * - Use handleClientMessage() to process incoming messages
-   * 
+   *
    * This allows you to use your own transport layer (existing WebSocket, HTTP, WebRTC, etc.)
    * @default false
    * @example
@@ -104,7 +104,7 @@ export interface ServerUiStateConfig {
    *   externalTransport: true,
    *   onMessage: (message) => myWebSocket.send(message)
    * });
-   * 
+   *
    * myWebSocket.on('message', (data) => {
    *   server.handleClientMessage(data);
    * });
@@ -231,11 +231,11 @@ export class ServerUiState<T extends object> {
    *   { count: 0 },
    *   { serverConfig: { port: 3000 } }
    * );
-   * 
+   *
    * // Using external transport
    * const server = new ServerUiState(
    *   { count: 0 },
-   *   { 
+   *   {
    *     externalTransport: true,
    *     onMessage: (msg) => myTransport.send(msg)
    *   }
