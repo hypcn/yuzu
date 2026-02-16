@@ -36,29 +36,68 @@ export interface ClientUiStateSocketConfig {
   /**
    * The full websocket address to connect to
    * @default "ws://localhost:3000/api/yuzu"
+   * Ignored when externalTransport is true.
    */
   address: string,
   /**
    * Duration in milliseconds to wait before attempting to reconnect after connection loss
    * @default 3000
+   * Ignored when externalTransport is true.
    */
   reconnectTimeout: number,
   /**
    * Optional authentication token.
    * Automatically appended to connection URL as query parameter: ?token=xyz
    * Use either `token` or `getToken`, not both.
+   * Ignored when externalTransport is true.
    */
   token?: string,
   /**
    * Optional callback to get authentication token.
    * Called on each connection attempt, useful for token refresh/rotation.
    * Use either `token` or `getToken`, not both.
+   * Ignored when externalTransport is true.
    * @example
    * ```typescript
    * getToken: async () => await myAuthService.getValidToken()
    * ```
    */
   getToken?: () => string | Promise<string>,
+  /**
+   * Enable external transport mode. When true:
+   * - No WebSocket connection is created (address/reconnectTimeout/token/getToken are ignored)
+   * - You must provide an onMessage callback to handle outgoing client messages
+   * - Use handleServerMessage() to process incoming messages from the server
+   * - Connection state management (connected$, isConnected) is disabled
+   * 
+   * This allows you to use your own transport layer (existing WebSocket, HTTP, WebRTC, etc.)
+   * @default false
+   * @example
+   * ```typescript
+   * const client = new ClientUiState(initialState, {
+   *   externalTransport: true,
+   *   onMessage: (message) => myWebSocket.send(message)
+   * });
+   * 
+   * myWebSocket.on('message', (data) => {
+   *   client.handleServerMessage(data);
+   * });
+   * ```
+   */
+  externalTransport?: boolean;
+  /**
+   * Callback invoked when the client needs to send a message to the server.
+   * Required when externalTransport is true.
+   * The message is a JSON string ready to be sent over any transport.
+   * @param message - JSON-stringified message to send to server
+   * @example
+   * ```typescript
+   * onMessage: (message) => {
+   *   myCustomTransport.send(message);
+   * }
+   * ```
+   */
+  onMessage?: (message: string) => void;
 }
 
 export class ClientUiState<T extends object> {
@@ -89,23 +128,42 @@ export class ClientUiState<T extends object> {
   };
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
   private isManualReconnect = false;
+  private externalTransport: boolean = false;
+  private onMessageCallback?: (message: string) => void;
 
   private _connected = new BehaviorSubject<boolean>(false);
-  /** Observable emitting when the connection state of the client changes */
+  /** 
+   * Observable emitting when the connection state of the client changes.
+   * Always emits `false` in externalTransport mode.
+   */
   public connected$ = this._connected.asObservable();
-  /** Whether the client is currently connected to a Yuzu server */
+  /** 
+   * Whether the client is currently connected to a Yuzu server.
+   * Always returns `false` in externalTransport mode.
+   */
   get isConnected() { return this._connected.value; }
 
   /**
    * Creates a new ClientUiState instance that connects to a Yuzu server.
    * The client will automatically connect to the server and synchronize state.
    * @param initial - The initial state object. This should match the server's initial state structure.
-   * @param config - Optional configuration for the WebSocket connection
+   * @param config - Optional configuration for the WebSocket connection or external transport
+   * @throws Error if externalTransport is true but onMessage callback is not provided
    * @example
    * ```typescript
+   * // WebSocket mode
    * const client = new ClientUiState(
    *   { count: 0, name: "default" },
    *   { address: "ws://localhost:3000/api/yuzu" }
+   * );
+   * 
+   * // External transport mode
+   * const client = new ClientUiState(
+   *   { count: 0, name: "default" },
+   *   { 
+   *     externalTransport: true,
+   *     onMessage: (msg) => myTransport.send(msg)
+   *   }
    * );
    * ```
    */
@@ -114,16 +172,31 @@ export class ClientUiState<T extends object> {
     this._subscribableState = this.setState(initial);
 
     this.wsConfig = Object.assign(this.wsConfig, config);
-    this.connect();
+    this.externalTransport = this.wsConfig.externalTransport || false;
+    
+    if (this.externalTransport) {
+      // External transport mode
+      if (!this.wsConfig.onMessage) {
+        throw new Error(`onMessage callback must be provided when using externalTransport mode`);
+      }
+      this.onMessageCallback = this.wsConfig.onMessage;
+      console.log("ClientUiState initialized in external transport mode");
+    } else {
+      // WebSocket mode
+      this.connect();
+    }
   }
 
   /**
    * Establish WebSocket connection to the Yuzu server.
    * Sets up all event handlers (open, close, error, message) and implements auto-reconnection logic.
    * Authentication tokens are automatically appended as query parameters if configured.
+   * Only used in WebSocket mode (not external transport).
    * @internal
    */
   private async connect() {
+    if (this.externalTransport) return;
+    
     console.log("Connecting...");
 
     // Build connection URL with authentication token if provided
@@ -203,6 +276,31 @@ export class ClientUiState<T extends object> {
       this.notifyListenersOnce(msg.patches.map(p => p.path));
     }
 
+  }
+
+  /**
+   * Handle an incoming server message when using external transport mode.
+   * Call this method when your custom transport receives a message from the server.
+   * @param message - JSON-stringified message from the server
+   * @example
+   * ```typescript
+   * myWebSocket.on('message', (data) => {
+   *   client.handleServerMessage(data.toString());
+   * });
+   * ```
+   */
+  handleServerMessage(message: string) {
+    if (!this.externalTransport) {
+      console.warn("handleServerMessage() should only be used in externalTransport mode");
+      return;
+    }
+    
+    try {
+      const msg = JSON.parse(message) as ServerUiMessage;
+      this.handleMessage(msg);
+    } catch (error) {
+      console.error("Error parsing server message:", error);
+    }
   }
 
   /**
@@ -432,6 +530,7 @@ export class ClientUiState<T extends object> {
    * Completely reload the state from the server.
    * Requests the full state object from the server and updates the local state.
    * All listeners will be notified of the update.
+   * In externalTransport mode, sends the request via the onMessage callback.
    * @example
    * ```typescript
    * client.reload(); // Force a full state refresh from the server
@@ -441,13 +540,20 @@ export class ClientUiState<T extends object> {
     const msg: MsgReqComplete = {
       type: "complete",
     };
-    this.ws?.send(JSON.stringify(msg));
+    const msgString = JSON.stringify(msg);
+    
+    if (this.externalTransport) {
+      this.onMessageCallback?.(msgString);
+    } else {
+      this.ws?.send(msgString);
+    }
   }
 
   /**
    * Manually trigger a reconnection to the server.
    * Closes the current WebSocket connection (if any) and immediately establishes a new one.
    * This is useful when authentication status changes or connection parameters need to be refreshed.
+   * Does nothing in externalTransport mode.
    *
    * Note: The connection will use the latest token from `getToken()` if configured.
    * @example
@@ -458,6 +564,11 @@ export class ClientUiState<T extends object> {
    * ```
    */
   reconnect() {
+    if (this.externalTransport) {
+      console.warn("reconnect() does nothing in externalTransport mode");
+      return;
+    }
+    
     // Clear any pending automatic reconnection
     if (this.reconnectTimeoutId !== undefined) {
       clearTimeout(this.reconnectTimeoutId);
@@ -479,6 +590,7 @@ export class ClientUiState<T extends object> {
    * Disconnect from the server and stop automatic reconnection.
    * This permanently closes the WebSocket connection without attempting to reconnect.
    * Use this when you want to cleanly shut down the client connection.
+   * Does nothing in externalTransport mode.
    * @example
    * ```typescript
    * // Clean up before unmounting/destroying
@@ -486,6 +598,11 @@ export class ClientUiState<T extends object> {
    * ```
    */
   disconnect() {
+    if (this.externalTransport) {
+      console.warn("disconnect() does nothing in externalTransport mode");
+      return;
+    }
+    
     // Clear any pending automatic reconnection
     if (this.reconnectTimeoutId !== undefined) {
       clearTimeout(this.reconnectTimeoutId);

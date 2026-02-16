@@ -363,6 +363,316 @@ const uiState = new ServerUiState(INITIAL_UI_STATE, {
 });
 ```
 
+## External Transport Mode
+
+Yuzu's external transport mode allows you to use your own communication layer (WebSocket, HTTP polling, Server-Sent Events, WebRTC, etc.) instead of the built-in WebSocket server. This is useful when:
+
+- You already have a WebSocket connection and don't want to create a second one
+- You want to integrate Yuzu into an existing communication infrastructure
+- You need full control over the transport layer (authentication, compression, routing, etc.)
+- You want to use a different transport mechanism entirely
+
+### How It Works
+
+In external transport mode, Yuzu focuses solely on state synchronization. You're responsible for:
+
+1. Managing the connection/transport
+2. Sending Yuzu's messages to clients/server
+3. Forwarding received messages back to Yuzu
+
+Yuzu continues to handle:
+
+- State change detection
+- Message serialization
+- Patch generation and batching
+- Subscription management
+- State synchronization logic
+
+### Server-Side External Transport
+
+Configure the server with `externalTransport: true` and provide an `onMessage` callback:
+
+```ts
+import { ServerUiState } from "@hypericon/yuzu";
+import WebSocket, { WebSocketServer } from "ws";
+import { INITIAL_UI_STATE } from "./shared/ui-state";
+
+// Create your own WebSocket server
+const wss = new WebSocketServer({ port: 3000, path: "/ws" });
+
+// Map to track clients by ID
+const clients = new Map<string, WebSocket>();
+let nextClientId = 1;
+
+// Create Yuzu server in external transport mode
+const yuzuServer = new ServerUiState(INITIAL_UI_STATE, {
+  externalTransport: true,
+  onMessage: (message, clientId) => {
+    if (clientId) {
+      // Send to specific client (e.g., for full state reload)
+      const client = clients.get(clientId);
+      if (client && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    } else {
+      // Broadcast to all clients (e.g., for state patches)
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
+    }
+  },
+});
+
+// Forward incoming messages to Yuzu
+wss.on("connection", (ws) => {
+  const clientId = `client-${nextClientId++}`;
+  clients.set(clientId, ws);
+
+  ws.on("message", (data) => {
+    // Pass clientId so Yuzu can send targeted responses
+    yuzuServer.handleClientMessage(data.toString(), clientId);
+  });
+
+  ws.on("close", () => {
+    clients.delete(clientId);
+  });
+});
+
+// Use state as normal - updates are sent via your onMessage callback
+yuzuServer.state.counter++;
+```
+
+**Server Configuration:**
+
+- `externalTransport: true` - Disables built-in WebSocket server
+- `onMessage: (message: string, clientId?: string) => void` - **Required** callback for sending messages to clients
+  - `message` - JSON-stringified message to send
+  - `clientId` - When provided, send only to this specific client (e.g., full state reload). When undefined, broadcast to all clients (e.g., state patches).
+- `serverRef`, `serverConfig`, `path`, `authenticate` - Ignored in external transport mode
+
+**Methods:**
+
+- `handleClientMessage(message: string, clientId?: string)` - Call this with incoming messages from clients
+  - `message` - JSON-stringified message from the client
+  - `clientId` - Optional identifier for the client. Used for targeted responses like full state reloads.
+- All other methods and properties work as normal
+
+**Targeted Messaging:** The optional `clientId` parameter enables bandwidth optimization. When a single client requests the full state (via `reload()`), only that client receives the response instead of broadcasting to all clients. State patches are still broadcast to all clients (no `clientId`).
+
+### Client-Side External Transport
+
+Configure the client with `externalTransport: true` and provide an `onMessage` callback:
+
+```ts
+import { ClientUiState } from "@hypericon/yuzu";
+import { INITIAL_UI_STATE } from "./shared/ui-state";
+
+// Create your own WebSocket connection
+const ws = new WebSocket("ws://localhost:3000/ws");
+
+// Create Yuzu client in external transport mode
+const yuzuClient = new ClientUiState(INITIAL_UI_STATE, {
+  externalTransport: true,
+  onMessage: (message) => {
+    // Send Yuzu messages through your WebSocket
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(message);
+    }
+  },
+});
+
+// Forward incoming messages to Yuzu
+ws.addEventListener("open", () => {
+  // Request initial state from server
+  yuzuClient.reload();
+});
+
+ws.addEventListener("message", (event) => {
+  yuzuClient.handleServerMessage(event.data);
+});
+
+// Use state and subscriptions as normal
+yuzuClient.state$.counter.subscribe((value) => {
+  console.log("Counter:", value);
+});
+```
+
+**Client Configuration:**
+
+- `externalTransport: true` - Disables built-in WebSocket connection
+- `onMessage: (message: string) => void` - **Required** callback for sending messages to server
+- `address`, `reconnectTimeout`, `token`, `getToken` - Ignored in external transport mode
+
+**Methods:**
+
+- `handleServerMessage(message: string)` - Call this with incoming messages from the server
+- `reload()` - Request full state from server (sends message via your `onMessage` callback)
+- `reconnect()`, `disconnect()` - Do nothing in external transport mode (your responsibility)
+- All subscription and state reading methods work as normal
+
+**Properties:**
+
+- `connected$` and `isConnected` - Always return `false` in external transport mode (manage your own connection state)
+
+### Complete Example
+
+See the [external-transport example](./example/external-transport) for a working demonstration of using Yuzu with your own WebSocket connection.
+
+### Alternative Transport Examples
+
+**HTTP Polling (Server):**
+
+```ts
+import express from "express";
+import { ServerUiState } from "@hypericon/yuzu";
+
+const app = express();
+app.use(express.json());
+
+const pendingMessages = new Map<string, string[]>();
+
+const yuzuServer = new ServerUiState(INITIAL_UI_STATE, {
+  externalTransport: true,
+  onMessage: (message, clientId) => {
+    if (clientId) {
+      // Store message for specific client
+      if (!pendingMessages.has(clientId)) {
+        pendingMessages.set(clientId, []);
+      }
+      pendingMessages.get(clientId)!.push(message);
+    } else {
+      // Broadcast to all clients
+      for (const [id, messages] of pendingMessages.entries()) {
+        messages.push(message);
+      }
+    }
+  },
+});
+
+// Client polls this endpoint
+app.get("/poll/:clientId", (req, res) => {
+  const clientId = req.params.clientId;
+  const messages = pendingMessages.get(clientId) || [];
+  pendingMessages.set(clientId, []); // Clear after sending
+  res.json({ messages });
+});
+
+// Client sends messages to this endpoint
+app.post("/message/:clientId", (req, res) => {
+  const clientId = req.params.clientId;
+  yuzuServer.handleClientMessage(JSON.stringify(req.body), clientId);
+  res.sendStatus(200);
+});
+```
+
+**Server-Sent Events (Server):**
+
+```ts
+import express from "express";
+import { ServerUiState } from "@hypericon/yuzu";
+
+const app = express();
+const clients = new Map<string, express.Response>();
+
+const yuzuServer = new ServerUiState(INITIAL_UI_STATE, {
+  externalTransport: true,
+  onMessage: (message, clientId) => {
+    if (clientId) {
+      // Send to specific client
+      const client = clients.get(clientId);
+      if (client) {
+        client.write(`data: ${message}\n\n`);
+      }
+    } else {
+      // Broadcast to all connected SSE clients
+      clients.forEach((client) => {
+        client.write(`data: ${message}\n\n`);
+      });
+    }
+  },
+});
+
+app.get("/events/:clientId", (req, res) => {
+  const clientId = req.params.clientId;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  
+  clients.set(clientId, res);
+  
+  req.on("close", () => {
+    clients.delete(clientId);
+  });
+});
+
+// Endpoint for client messages
+app.post("/message/:clientId", (req, res) => {
+  const clientId = req.params.clientId;
+  yuzuServer.handleClientMessage(JSON.stringify(req.body), clientId);
+  res.sendStatus(200);
+});
+```
+
+### Migration Guide
+
+Switching from standard mode to external transport mode is straightforward:
+
+**Before (Standard Mode):**
+
+```ts
+// Server
+const yuzu = new ServerUiState(initialState, {
+  serverConfig: { port: 3000 }
+});
+
+// Client
+const yuzu = new ClientUiState(initialState, {
+  address: "ws://localhost:3000/api/yuzu"
+});
+```
+
+**After (External Transport Mode):**
+
+```ts
+// Server
+const myWss = new WebSocketServer({ port: 3000 });
+const clients = new Map<string, WebSocket>();
+let nextId = 1;
+
+const yuzu = new ServerUiState(initialState, {
+  externalTransport: true,
+  onMessage: (msg, clientId) => {
+    if (clientId) {
+      // Send to specific client
+      clients.get(clientId)?.send(msg);
+    } else {
+      // Broadcast to all
+      myWss.clients.forEach(c => c.send(msg));
+    }
+  }
+});
+
+myWss.on("connection", ws => {
+  const clientId = `c${nextId++}`;
+  clients.set(clientId, ws);
+  ws.on("message", data => yuzu.handleClientMessage(data.toString(), clientId));
+  ws.on("close", () => clients.delete(clientId));
+});
+
+// Client
+const myWs = new WebSocket("ws://localhost:3000");
+const yuzu = new ClientUiState(initialState, {
+  externalTransport: true,
+  onMessage: (msg) => myWs.send(msg)
+});
+myWs.addEventListener("message", e => yuzu.handleServerMessage(e.data));
+myWs.addEventListener("open", () => yuzu.reload());
+```
+
+All state access, subscriptions, and other Yuzu APIs remain identical!
+
 ## RxJS Compatibility
 
 `YuzuSubscription` implements the RxJS `Unsubscribable` interface, making it fully compatible with the RxJS ecosystem. You can:

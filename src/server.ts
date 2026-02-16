@@ -24,16 +24,19 @@ export interface AuthenticationInfo {
 /**
  * Configuration options for initializing a ServerUiState instance.
  * Must provide either serverRef (existing HTTP server) OR serverConfig (new server settings), but not both.
+ * Alternatively, use externalTransport mode to manage messaging manually.
  */
 export interface ServerUiStateConfig {
   /**
    * Reference to an existing HTTP server to attach WebSocket server to.
    * Provide either this OR serverConfig, not both.
+   * Ignored when externalTransport is true.
    */
   serverRef?: Server,
   /**
    * Configuration options for creating a new HTTP server.
    * Provide either this OR serverRef, not both.
+   * Ignored when externalTransport is true.
    */
   serverConfig?: {
     /** Port number on which to listen for incoming connections */
@@ -42,6 +45,7 @@ export interface ServerUiStateConfig {
   /**
    * URL path at which to listen for incoming WebSocket connections
    * @default "/api/yuzu"
+   * Ignored when externalTransport is true.
    */
   path?: string,
   /**
@@ -74,6 +78,7 @@ export interface ServerUiStateConfig {
    * Return true/Promise<true> to accept connection, false/Promise<false> to reject.
    * Connection is rejected BEFORE it's fully established if auth fails.
    * If not provided, all connections are accepted.
+   * Ignored when externalTransport is true.
    * @example
    * ```typescript
    * authenticate: async (info) => {
@@ -84,6 +89,49 @@ export interface ServerUiStateConfig {
    * ```
    */
   authenticate?: (info: AuthenticationInfo) => boolean | Promise<boolean>;
+  /**
+   * Enable external transport mode. When true:
+   * - No WebSocket server is created (serverRef/serverConfig/path/authenticate are ignored)
+   * - You must provide an onMessage callback to handle incoming client messages
+   * - Use sendToClient() to manually send messages
+   * - Use handleClientMessage() to process incoming messages
+   * 
+   * This allows you to use your own transport layer (existing WebSocket, HTTP, WebRTC, etc.)
+   * @default false
+   * @example
+   * ```typescript
+   * const server = new ServerUiState(initialState, {
+   *   externalTransport: true,
+   *   onMessage: (message) => myWebSocket.send(message)
+   * });
+   * 
+   * myWebSocket.on('message', (data) => {
+   *   server.handleClientMessage(data);
+   * });
+   * ```
+   */
+  externalTransport?: boolean;
+  /**
+   * Callback invoked when the server needs to send a message to clients.
+   * Required when externalTransport is true.
+   * The message is a JSON string ready to be sent over any transport.
+   * @param message - JSON-stringified message to send to client(s)
+   * @param clientId - Optional client identifier. When provided, send only to this client.
+   *                   When undefined, broadcast to all clients.
+   * @example
+   * ```typescript
+   * onMessage: (message, clientId) => {
+   *   if (clientId) {
+   *     // Send to specific client
+   *     myClientMap.get(clientId)?.send(message);
+   *   } else {
+   *     // Broadcast to all clients
+   *     myCustomTransport.broadcast(message);
+   *   }
+   * }
+   * ```
+   */
+  onMessage?: (message: string, clientId?: string) => any;
 }
 
 /**
@@ -110,7 +158,7 @@ export type YuzuLoggerLevel = "debug" | "log" | "warn" | "error";
 class DefaultLogger implements YuzuLogger {
   constructor(
     private logLevels: YuzuLoggerLevel[] = ["error", "debug", "log"],
-  ) {}
+  ) { }
   debug(...msgs: any[]) {
     if (this.logLevels.includes("debug")) console.debug(msgs);
   }
@@ -139,19 +187,17 @@ export class ServerUiState<T extends object> {
    */
   public get state() { return this._state; }
 
-  private wss: WebSocketServer;
+  private wss: WebSocketServer | undefined;
   /**
    * The underlying WebSocket server instance.
    * Provides access to the raw WebSocketServer for advanced usage, debugging, and monitoring.
+   * Will be undefined when using externalTransport mode.
    * @example
    * ```typescript
    * // Monitor connected clients
-   * console.log(`Connected clients: ${server.webSocketServer.clients.size}`);
-   *
-   * // Add custom event handlers
-   * server.webSocketServer.on('connection', (ws) => {
-   *   console.log('New client connected');
-   * });
+   * if (server.webSocketServer) {
+   *   console.log(`Connected clients: ${server.webSocketServer.clients.size}`);
+   * }
    * ```
    */
   public get webSocketServer() { return this.wss; }
@@ -163,12 +209,15 @@ export class ServerUiState<T extends object> {
   private batchTimeout: NodeJS.Timeout | undefined = undefined;
 
   private logger: YuzuLogger;
+  private externalTransport: boolean = false;
+  private onMessageCallback?: (message: string, clientId?: string) => void;
 
   /**
    * Creates a new ServerUiState instance that manages state and broadcasts changes to clients.
    * @param initial - The initial state object. All properties will be watched for changes.
    * @param config - Configuration for the WebSocket server and logging
-   * @throws Error if neither serverRef nor serverConfig is provided
+   * @throws Error if neither serverRef nor serverConfig is provided (unless using externalTransport)
+   * @throws Error if externalTransport is true but onMessage callback is not provided
    * @example
    * ```typescript
    * // Using an existing HTTP server
@@ -181,6 +230,15 @@ export class ServerUiState<T extends object> {
    * const server = new ServerUiState(
    *   { count: 0 },
    *   { serverConfig: { port: 3000 } }
+   * );
+   * 
+   * // Using external transport
+   * const server = new ServerUiState(
+   *   { count: 0 },
+   *   { 
+   *     externalTransport: true,
+   *     onMessage: (msg) => myTransport.send(msg)
+   *   }
    * );
    * ```
    */
@@ -196,76 +254,89 @@ export class ServerUiState<T extends object> {
     this._state = initial;
     this.setState(initial);
 
-    if (!config.serverRef && !config.serverConfig) {
-      throw new Error(`Either an existing HTTP server or new server config must be supplied`);
-    }
+    // Handle external transport mode
+    this.externalTransport = config.externalTransport || false;
 
-    const existingServer = Boolean(config.serverRef);
-    const path = config.path || DEFAULT_SERVER_PATH;
-
-    // Set up authentication if provided
-    const verifyClient = config.authenticate
-      ? (info: { origin: string; req: IncomingMessage }, callback: (verified: boolean, code?: number, message?: string) => void) => {
-        // Parse query parameters from the request URL
-        const url = new URL(info.req.url || "", `http://${info.req.headers.host}`);
-        const queryParams = url.searchParams;
-
-        const authInfo: AuthenticationInfo = {
-          request: info.req,
-          queryParams,
-          origin: info.origin,
-        };
-
-        // Handle both sync and async authenticate functions
-        try {
-          const resultOrPromise = config.authenticate!(authInfo);
-
-          if (resultOrPromise instanceof Promise) {
-            // Async authentication
-            resultOrPromise
-              .then((result) => {
-                if (result) {
-                  callback(true);
-                } else {
-                  this.logger.warn("Authentication failed for incoming connection");
-                  callback(false, 401, "Unauthorized");
-                }
-              })
-              .catch((error) => {
-                this.logger.error("Error during authentication:", error);
-                callback(false, 500, "Internal Server Error");
-              });
-          } else {
-            // Sync authentication
-            if (resultOrPromise) {
-              callback(true);
-            } else {
-              this.logger.warn("Authentication failed for incoming connection");
-              callback(false, 401, "Unauthorized");
-            }
-          }
-        } catch (error) {
-          // Handle synchronous errors
-          this.logger.error("Error during authentication:", error);
-          callback(false, 500, "Internal Server Error");
-        }
+    if (this.externalTransport) {
+      // External transport mode
+      if (!config.onMessage) {
+        throw new Error(`onMessage callback must be provided when using externalTransport mode`);
       }
-      : undefined;
+      this.onMessageCallback = config.onMessage;
+      this.logger.log("ServerUiState initialized in external transport mode");
+    } else {
+      // WebSocket mode
+      if (!config.serverRef && !config.serverConfig) {
+        throw new Error(`Either an existing HTTP server or new server config must be supplied`);
+      }
 
-    this.wss = new WebSocketServer({
-      server: existingServer ? config.serverRef : undefined,
-      port: existingServer ? undefined : config.serverConfig?.port,
-      path: path.startsWith("/") ? path : `/${path}`,
-      verifyClient,
-      perMessageDeflate: config.perMessageDeflate,
-    });
+      const existingServer = Boolean(config.serverRef);
+      const path = config.path || DEFAULT_SERVER_PATH;
 
-    // Store HTTP server reference if we created one (for cleanup)
-    if (!existingServer && config.serverConfig) {
-      this.httpServer = this.wss.options.server as Server | undefined;
+      // Set up authentication if provided
+      const verifyClient = config.authenticate
+        ? (info: { origin: string; req: IncomingMessage }, callback: (verified: boolean, code?: number, message?: string) => void) => {
+          // Parse query parameters from the request URL
+          const url = new URL(info.req.url || "", `http://${info.req.headers.host}`);
+          const queryParams = url.searchParams;
+
+          const authInfo: AuthenticationInfo = {
+            request: info.req,
+            queryParams,
+            origin: info.origin,
+          };
+
+          // Handle both sync and async authenticate functions
+          try {
+            const resultOrPromise = config.authenticate!(authInfo);
+
+            if (resultOrPromise instanceof Promise) {
+              // Async authentication
+              resultOrPromise
+                .then((result) => {
+                  if (result) {
+                    callback(true);
+                  } else {
+                    this.logger.warn("Authentication failed for incoming connection");
+                    callback(false, 401, "Unauthorized");
+                  }
+                })
+                .catch((error) => {
+                  this.logger.error("Error during authentication:", error);
+                  callback(false, 500, "Internal Server Error");
+                });
+            } else {
+              // Sync authentication
+              if (resultOrPromise) {
+                callback(true);
+              } else {
+                this.logger.warn("Authentication failed for incoming connection");
+                callback(false, 401, "Unauthorized");
+              }
+            }
+          } catch (error) {
+            // Handle synchronous errors
+            this.logger.error("Error during authentication:", error);
+            callback(false, 500, "Internal Server Error");
+          }
+        }
+        : undefined;
+
+      this.wss = new WebSocketServer({
+        server: existingServer ? config.serverRef : undefined,
+        port: existingServer ? undefined : config.serverConfig?.port,
+        path: path.startsWith("/") ? path : `/${path}`,
+        verifyClient,
+        perMessageDeflate: config.perMessageDeflate,
+      });
+
+      // Store HTTP server reference if we created one (for cleanup)
+      if (!existingServer && config.serverConfig) {
+        this.httpServer = this.wss.options.server as Server | undefined;
+      }
+
+      this.listen();
     }
-
-    this.listen();
 
     if (config.batchDelay && config.batchDelay > 0) this.batchDelay = config.batchDelay;
 
@@ -275,6 +346,7 @@ export class ServerUiState<T extends object> {
    * Closes the WebSocket server and cleans up resources.
    * If an HTTP server was created by ServerUiState, it will also be closed.
    * If an external HTTP server was provided, it will NOT be closed.
+   * Does nothing in externalTransport mode.
    */
   close(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -282,6 +354,12 @@ export class ServerUiState<T extends object> {
       if (this.batchTimeout) {
         clearTimeout(this.batchTimeout);
         this.batchTimeout = undefined;
+      }
+
+      // In external transport mode, just resolve
+      if (this.externalTransport || !this.wss) {
+        resolve();
+        return;
       }
 
       // Close WebSocket server
@@ -373,9 +451,12 @@ export class ServerUiState<T extends object> {
    * Set up WebSocket connection listeners.
    * Handles new connections, incoming messages, disconnections, and errors.
    * Each new client automatically receives the complete state upon connection.
+   * Only used in WebSocket mode (not external transport).
    * @internal
    */
   private listen() {
+    if (!this.wss) return;
+
     this.wss.on("connection", (ws, req) => {
       this.logger.log(`New connection from ${req.headers.origin}`);
 
@@ -399,10 +480,11 @@ export class ServerUiState<T extends object> {
    * Handle an incoming message from a connected client.
    * Currently supports "complete" message type for full state requests.
    * @param msg - The parsed message from the client
-   * @param ws - The WebSocket connection that sent the message
+   * @param ws - The WebSocket connection that sent the message (optional in external transport mode)
+   * @param clientId - Optional client identifier for targeted responses in external transport mode
    * @internal
    */
-  private handleMessage(msg: ClientUiMessage, ws: WebSocket) {
+  private handleMessage(msg: ClientUiMessage, ws?: WebSocket, clientId?: string) {
 
     if (msg.type === "complete") {
       // The proxied state object gets stringified into a POJO, so no cleanup is required
@@ -410,11 +492,44 @@ export class ServerUiState<T extends object> {
         type: "complete",
         state: this._state,
       };
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(complete));
+      const completeMessage = JSON.stringify(complete);
+
+      if (this.externalTransport) {
+        // Send via external transport - include clientId for targeted delivery
+        this.onMessageCallback?.(completeMessage, clientId);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        // Send via WebSocket
+        ws.send(completeMessage);
       }
     }
 
+  }
+
+  /**
+   * Handle an incoming client message when using external transport mode.
+   * Call this method when your custom transport receives a message from a client.
+   * @param message - JSON-stringified message from the client
+   * @param clientId - Optional identifier for the client sending the message.
+   *                   Used for targeted responses (e.g., sending full state only to requesting client).
+   * @example
+   * ```typescript
+   * myWebSocket.on('message', (data, clientId) => {
+   *   server.handleClientMessage(data.toString(), clientId);
+   * });
+   * ```
+   */
+  handleClientMessage(message: string, clientId?: string) {
+    if (!this.externalTransport) {
+      this.logger.warn("handleClientMessage() should only be used in externalTransport mode");
+      return;
+    }
+
+    try {
+      const msg = JSON.parse(message) as ClientUiMessage;
+      this.handleMessage(msg, undefined, clientId);
+    } catch (error) {
+      this.logger.error("Error parsing client message:", error);
+    }
   }
 
   /**
@@ -466,24 +581,28 @@ export class ServerUiState<T extends object> {
   }
 
   /**
-   * Send a stringified message to all connected clients via WebSocket.
-   * Only sends to clients whose connections are in OPEN state.
+   * Send a stringified message to all connected clients via WebSocket or external transport.
+   * Only sends to clients whose connections are in OPEN state (WebSocket mode).
    * Logs errors if message delivery fails.
    * @param message - JSON-stringified message to broadcast
    * @internal
    */
   private send(message: string) {
-
-    this.wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message, err => {
-          if (err) {
-            this.logger.error("Error sending message:", err?.message);
-          }
-        });
-      }
-    });
-
+    if (this.externalTransport) {
+      // Send via external transport callback
+      this.onMessageCallback?.(message);
+    } else if (this.wss) {
+      // Send via WebSocket to all connected clients
+      this.wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message, err => {
+            if (err) {
+              this.logger.error("Error sending message:", err?.message);
+            }
+          });
+        }
+      });
+    }
   }
 
 }
