@@ -1,6 +1,6 @@
 {
   "name": "@hypericon/yuzu",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Library to push UI State updates across connected clients in CI applications",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
