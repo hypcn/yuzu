@@ -1,5 +1,5 @@
 import { Server } from "http";
-import { UiStateService } from "./server-ui-state";
+import { YuzuService } from "./server-ui-state";
 
 const PORT = 3000;
 
@@ -20,8 +20,8 @@ const server = USE_EXISTING_SERVER ? new Server((req, res) => {
 
 // ===== Binding Example =====
 
-const uiStateSvc = new UiStateService({ server, port: PORT });
-// ServerUiState(UI_STATE, { httpServer: server });
+const yuzuSvc = new YuzuService({ server, port: PORT });
+// YuzuServer(UI_STATE, { httpServer: server });
 
 function getAlerts() {
 
@@ -47,13 +47,13 @@ function getPc() {
 
 function updateShades() {
 
-  uiStateSvc.updateShadeStatus("shade1", {
+  yuzuSvc.updateShadeStatus("shade1", {
     id: "shade1", statusName: "stopped", position: getPc(), alerts: getAlerts(),
   });
-  uiStateSvc.updateShadeStatus("shade2", {
+  yuzuSvc.updateShadeStatus("shade2", {
     id: "shade2", statusName: "stopped", position: getPc(), alerts: getAlerts(),
   });
-  uiStateSvc.updateShadeStatus("shade3", {
+  yuzuSvc.updateShadeStatus("shade3", {
     id: "shade3", statusName: "stopped", position: getPc(), alerts: getAlerts(),
   });
 
@@ -65,12 +65,12 @@ updateShades();
 
 function updateFixtures() {
 
-  uiStateSvc.updateFixture("1", { id: "1", brightness: getPc(), alerts: getAlerts() });
-  uiStateSvc.updateFixture("2", { id: "2", brightness: getPc(), alerts: getAlerts() });
-  uiStateSvc.updateFixture("3", { id: "3", brightness: getPc(), alerts: getAlerts() });
-  uiStateSvc.updateFixture("4", { id: "4", brightness: getPc(), alerts: getAlerts() });
-  uiStateSvc.updateFixture("5", { id: "5", brightness: getPc(), alerts: getAlerts() });
-  uiStateSvc.updateFixture("6", { id: "6", brightness: getPc(), alerts: getAlerts() });
+  yuzuSvc.updateFixture("1", { id: "1", brightness: getPc(), alerts: getAlerts() });
+  yuzuSvc.updateFixture("2", { id: "2", brightness: getPc(), alerts: getAlerts() });
+  yuzuSvc.updateFixture("3", { id: "3", brightness: getPc(), alerts: getAlerts() });
+  yuzuSvc.updateFixture("4", { id: "4", brightness: getPc(), alerts: getAlerts() });
+  yuzuSvc.updateFixture("5", { id: "5", brightness: getPc(), alerts: getAlerts() });
+  yuzuSvc.updateFixture("6", { id: "6", brightness: getPc(), alerts: getAlerts() });
 
   setTimeout(() => {
     updateFixtures();

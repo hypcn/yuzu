@@ -10,7 +10,7 @@ describe("Authentication", () => {
   const TEST_PORT = 9876;
 
   afterEach(async () => {
-    // Clean up serverUiState if it exists
+    // Clean up yuzuServer if it exists
     if (yuzuServer) {
       try {
         await yuzuServer.close();
