@@ -702,4 +702,272 @@ it("should receive patch updates from server", async () => {
       expect(client.state.devices["device2"].status).toBe("inactive");
     });
   });
+
+  describe("external transport mode", () => {
+    it("should create client with external transport mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      expect(client).toBeInstanceOf(ClientUiState);
+      expect(client.state).toEqual(initialState);
+      expect(client.isConnected).toBe(false);
+    });
+
+    it("should throw error if onMessage not provided in external transport mode", () => {
+      const initialState = { count: 0 };
+
+      expect(() => {
+        new ClientUiState(initialState, {
+          externalTransport: true,
+        });
+      }).toThrow("onMessage callback must be provided when using externalTransport mode");
+    });
+
+    it("should ignore connection config in external transport mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        address: "ws://localhost:9999",
+        reconnectTimeout: 5000,
+        token: "secret",
+      });
+
+      expect(client).toBeInstanceOf(ClientUiState);
+      expect(client.isConnected).toBe(false); // Always false in external mode
+    });
+
+    it("should call onMessage when reload is called", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      onMessageMock.mockClear();
+      client.reload();
+
+      expect(onMessageMock).toHaveBeenCalledTimes(1);
+      const message = JSON.parse(onMessageMock.mock.calls[0][0]);
+      expect(message.type).toBe("complete");
+    });
+
+    it("should handle server message with complete state", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      const serverMessage: MsgSendComplete = {
+        type: "complete",
+        state: { count: 42 },
+      };
+
+      client.handleServerMessage(JSON.stringify(serverMessage));
+
+      expect(client.state.count).toBe(42);
+    });
+
+    it("should handle server message with single patch", () => {
+      const initialState = { count: 0, value: 10 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      const serverMessage: MsgSendPatch = {
+        type: "patch",
+        patch: { path: ["count"], value: 42 },
+      };
+
+      client.handleServerMessage(JSON.stringify(serverMessage));
+
+      expect(client.state.count).toBe(42);
+      expect(client.state.value).toBe(10); // Unchanged
+    });
+
+    it("should handle server message with patch batch", () => {
+      const initialState = { count: 0, value: 10 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      const serverMessage: MsgSendPatchBatch = {
+        type: "patch-batch",
+        patches: [
+          { path: ["count"], value: 42 },
+          { path: ["value"], value: 99 },
+        ],
+      };
+
+      client.handleServerMessage(JSON.stringify(serverMessage));
+
+      expect(client.state.count).toBe(42);
+      expect(client.state.value).toBe(99);
+    });
+
+    it("should warn when handleServerMessage called in non-external mode", () => {
+      const initialState = { count: 0 };
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const client = new ClientUiState(initialState, {
+        address: "ws://localhost:9999",
+      });
+
+      const serverMessage: MsgSendComplete = {
+        type: "complete",
+        state: { count: 42 },
+      };
+
+      client.handleServerMessage(JSON.stringify(serverMessage));
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "handleServerMessage() should only be used in externalTransport mode"
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("should handle invalid JSON in handleServerMessage", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      client.handleServerMessage("invalid json");
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Error parsing server message:",
+        expect.any(Error)
+      );
+
+      errorSpy.mockRestore();
+    });
+
+    it("should trigger subscriptions when state is updated via handleServerMessage", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      const listener = vi.fn();
+      // Use onChangeExisting for primitive subscriptions
+      client.onChangeExisting(["count"], listener);
+
+      const serverMessage: MsgSendPatch = {
+        type: "patch",
+        patch: { path: ["count"], value: 42 },
+      };
+
+      client.handleServerMessage(JSON.stringify(serverMessage));
+
+      expect(listener).toHaveBeenCalledWith(42, ["count"]);
+    });
+
+    it("should do nothing when reconnect is called in external mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      client.reconnect();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "reconnect() does nothing in externalTransport mode"
+      );
+      expect(client.isConnected).toBe(false);
+
+      warnSpy.mockRestore();
+    });
+
+    it("should do nothing when disconnect is called in external mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      client.disconnect();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "disconnect() does nothing in externalTransport mode"
+      );
+      expect(client.isConnected).toBe(false);
+
+      warnSpy.mockRestore();
+    });
+
+    it("should maintain connected$ observable as always false in external mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      const values: boolean[] = [];
+      client.connected$.subscribe(value => values.push(value));
+
+      expect(values).toEqual([false]);
+      expect(client.isConnected).toBe(false);
+    });
+
+    it("should handle nested state updates in external mode", () => {
+      const initialState = {
+        user: {
+          name: "John",
+          profile: {
+            bio: "Developer",
+          },
+        },
+      };
+      const onMessageMock = vi.fn();
+
+      const client = new ClientUiState(initialState, {
+        externalTransport: true,
+        onMessage: onMessageMock,
+      });
+
+      const serverMessage: MsgSendPatch = {
+        type: "patch",
+        patch: { path: ["user", "profile", "bio"], value: "Engineer" },
+      };
+
+      client.handleServerMessage(JSON.stringify(serverMessage));
+
+      expect(client.state.user.profile.bio).toBe("Engineer");
+    });
+  });
 });

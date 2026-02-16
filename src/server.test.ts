@@ -163,7 +163,8 @@ describe("ServerUiState", () => {
       const server = createServer(initialState, config);
 
       // Initially no clients
-      expect(server.webSocketServer.clients.size).toBe(0);
+      expect(server.webSocketServer).toBeDefined();
+      expect(server.webSocketServer!.clients.size).toBe(0);
 
       // Connect a client
       const ws = new WebSocket(`ws://localhost:${port}/api/yuzu`);
@@ -171,7 +172,8 @@ describe("ServerUiState", () => {
       await new Promise<void>((resolve) => {
         ws.on("open", () => {
           // Should now have 1 client
-          expect(server.webSocketServer.clients.size).toBe(1);
+          expect(server.webSocketServer).toBeDefined();
+          expect(server.webSocketServer!.clients.size).toBe(1);
           ws.close();
           resolve();
         });
@@ -191,7 +193,8 @@ describe("ServerUiState", () => {
       const connectionHandler = vi.fn();
 
       // Add custom event handler
-      server.webSocketServer.on("connection", connectionHandler);
+      expect(server.webSocketServer).toBeDefined();
+      server.webSocketServer!.on("connection", connectionHandler);
 
       // Connect a client
       const ws = new WebSocket(`ws://localhost:${port}/api/yuzu`);
@@ -217,9 +220,10 @@ describe("ServerUiState", () => {
       const server = createServer(initialState, config);
 
       // Should be able to access various WebSocket server properties
-      expect(server.webSocketServer.options).toBeDefined();
-      expect(server.webSocketServer.clients).toBeDefined();
-      expect(server.webSocketServer.address()).toBeDefined();
+      expect(server.webSocketServer).toBeDefined();
+      expect(server.webSocketServer!.options).toBeDefined();
+      expect(server.webSocketServer!.clients).toBeDefined();
+      expect(server.webSocketServer!.address()).toBeDefined();
     });
   });
 
@@ -593,6 +597,222 @@ describe("ServerUiState", () => {
       server.state.items[0].value = 15;
 
       expect(server.state.items[0].value).toBe(15);
+    });
+  });
+
+  describe("external transport mode", () => {
+    it("should create server with external transport mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+
+      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server.state).toEqual(initialState);
+      expect(server.webSocketServer).toBeUndefined();
+    });
+
+    it("should throw error if onMessage not provided in external transport mode", () => {
+      const initialState = { count: 0 };
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        logger: mockLogger,
+      };
+
+      expect(() => {
+        new ServerUiState(initialState, config);
+      }).toThrow("onMessage callback must be provided when using externalTransport mode");
+    });
+
+    it("should ignore serverRef/serverConfig in external transport mode", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        serverRef: httpServer,
+        serverConfig: { port: 3000 },
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+
+      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server.webSocketServer).toBeUndefined();
+    });
+
+    it("should call onMessage when state is changed", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+      onMessageMock.mockClear();
+
+      server.state.count = 42;
+
+      expect(onMessageMock).toHaveBeenCalledTimes(1);
+      const message = JSON.parse(onMessageMock.mock.calls[0][0]);
+      expect(message.type).toBe("patch");
+      expect(message.patch.path).toEqual(["count"]);
+      expect(message.patch.value).toBe(42);
+      expect(onMessageMock.mock.calls[0][1]).toBeUndefined(); // No clientId for patches
+    });
+
+    it("should call onMessage with clientId when handling client message", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+      onMessageMock.mockClear();
+
+      const clientMessage = JSON.stringify({ type: "complete" });
+      server.handleClientMessage(clientMessage, "client-123");
+
+      expect(onMessageMock).toHaveBeenCalledTimes(1);
+      const responseMessage = JSON.parse(onMessageMock.mock.calls[0][0]);
+      expect(responseMessage.type).toBe("complete");
+      expect(responseMessage.state).toEqual({ count: 0 });
+      expect(onMessageMock.mock.calls[0][1]).toBe("client-123"); // clientId passed for complete
+    });
+
+    it("should handle client message without clientId", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+      onMessageMock.mockClear();
+
+      const clientMessage = JSON.stringify({ type: "complete" });
+      server.handleClientMessage(clientMessage);
+
+      expect(onMessageMock).toHaveBeenCalledTimes(1);
+      const responseMessage = JSON.parse(onMessageMock.mock.calls[0][0]);
+      expect(responseMessage.type).toBe("complete");
+      expect(onMessageMock.mock.calls[0][1]).toBeUndefined(); // No clientId
+    });
+
+    it("should warn when handleClientMessage called in non-external mode", () => {
+      const initialState = { count: 0 };
+      const config: ServerUiStateConfig = {
+        serverRef: httpServer,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+
+      const clientMessage = JSON.stringify({ type: "complete" });
+      server.handleClientMessage(clientMessage);
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        "handleClientMessage() should only be used in externalTransport mode"
+      );
+    });
+
+    it("should handle invalid JSON in handleClientMessage", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+
+      server.handleClientMessage("invalid json");
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "Error parsing client message:",
+        expect.any(Error)
+      );
+    });
+
+    it("should support batching in external transport mode", async () => {
+      const initialState = { count: 0, value: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        batchDelay: 10,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+      onMessageMock.mockClear();
+
+      server.state.count = 1;
+      server.state.value = 2;
+
+      // Should not have sent yet
+      expect(onMessageMock).not.toHaveBeenCalled();
+
+      // Wait for batch delay
+      await new Promise(resolve => setTimeout(resolve, 20));
+
+      expect(onMessageMock).toHaveBeenCalledTimes(1);
+      const message = JSON.parse(onMessageMock.mock.calls[0][0]) as MsgSendPatchBatch;
+      expect(message.type).toBe("patch-batch");
+      expect(message.patches).toHaveLength(2);
+      expect(onMessageMock.mock.calls[0][1]).toBeUndefined(); // No clientId for batch
+    });
+
+    it("should close cleanly in external transport mode", async () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+
+      await expect(server.close()).resolves.toBeUndefined();
+    });
+
+    it("should handle multiple clients with different IDs", () => {
+      const initialState = { count: 0 };
+      const onMessageMock = vi.fn();
+      const config: ServerUiStateConfig = {
+        externalTransport: true,
+        onMessage: onMessageMock,
+        logger: mockLogger,
+      };
+
+      const server = createServer(initialState, config);
+      onMessageMock.mockClear();
+
+      // Client 1 requests state
+      const clientMessage1 = JSON.stringify({ type: "complete" });
+      server.handleClientMessage(clientMessage1, "client-1");
+
+      // Client 2 requests state
+      const clientMessage2 = JSON.stringify({ type: "complete" });
+      server.handleClientMessage(clientMessage2, "client-2");
+
+      expect(onMessageMock).toHaveBeenCalledTimes(2);
+      expect(onMessageMock.mock.calls[0][1]).toBe("client-1");
+      expect(onMessageMock.mock.calls[1][1]).toBe("client-2");
     });
   });
 });
