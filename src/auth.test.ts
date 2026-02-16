@@ -1,23 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Server } from "http";
 import WebSocket from "ws";
-import { ServerUiState, AuthenticationInfo } from "./server";
-import { ClientUiState } from "./client";
+import { YuzuServer, AuthenticationInfo } from "./server";
+import { YuzuClient } from "./client";
 
 describe("Authentication", () => {
   let server: Server;
-  let serverUiState: ServerUiState<any>;
+  let yuzuServer: YuzuServer<any>;
   const TEST_PORT = 9876;
 
   afterEach(async () => {
     // Clean up serverUiState if it exists
-    if (serverUiState) {
+    if (yuzuServer) {
       try {
-        await serverUiState.close();
+        await yuzuServer.close();
       } catch (e) {
         // Ignore errors during cleanup
       }
-      serverUiState = null as any;
+      yuzuServer = null as any;
     }
 
     // Clean up HTTP server if it exists and is separate
@@ -35,7 +35,7 @@ describe("Authentication", () => {
   describe("Server authentication", () => {
     it("should accept connections when no authenticate callback is provided", async () => {
       // Default behavior - no auth required
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         { serverConfig: { port: TEST_PORT } },
       );
@@ -56,7 +56,7 @@ describe("Authentication", () => {
     it("should accept connections when authenticate callback returns true", async () => {
       const authenticate = vi.fn().mockReturnValue(true);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -86,7 +86,7 @@ describe("Authentication", () => {
     it("should accept connections when authenticate callback returns Promise<true>", async () => {
       const authenticate = vi.fn().mockResolvedValue(true);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -111,7 +111,7 @@ describe("Authentication", () => {
     it("should reject connections when authenticate callback returns false", async () => {
       const authenticate = vi.fn().mockReturnValue(false);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -139,7 +139,7 @@ describe("Authentication", () => {
     it("should reject connections when authenticate callback returns Promise<false>", async () => {
       const authenticate = vi.fn().mockResolvedValue(false);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -167,7 +167,7 @@ describe("Authentication", () => {
         throw new Error("Auth service failed");
       });
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -193,7 +193,7 @@ describe("Authentication", () => {
     it("should provide correct query parameters to authenticate callback", async () => {
       const authenticate = vi.fn().mockReturnValue(true);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -223,7 +223,7 @@ describe("Authentication", () => {
       const authenticate = vi.fn().mockReturnValue(true);
       const tokenWithSpecialChars = "abc+123/xyz=";
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -249,7 +249,7 @@ describe("Authentication", () => {
   });
 
   describe("Client authentication", () => {
-    let clients: ClientUiState<any>[];
+    let clients: YuzuClient<any>[];
 
     beforeEach(() => {
       clients = [];
@@ -262,18 +262,18 @@ describe("Authentication", () => {
       }
     });
 
-    function createClient<T extends object>(initial: T, config?: any): ClientUiState<T> {
+    function createClient<T extends object>(initial: T, config?: any): YuzuClient<T> {
       const fullConfig = config || {};
       if (!fullConfig.address) {
         fullConfig.address = `ws://localhost:${TEST_PORT}/api/yuzu`;
       }
-      const client = new ClientUiState(initial, fullConfig);
+      const client = new YuzuClient(initial, fullConfig);
       clients.push(client);
       return client;
     }
 
     it("should connect without token when not provided", async () => {
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         { serverConfig: { port: TEST_PORT } },
       );
@@ -298,7 +298,7 @@ describe("Authentication", () => {
     it("should append token as query parameter when provided", async () => {
       const authenticate = vi.fn().mockReturnValue(true);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -330,7 +330,7 @@ describe("Authentication", () => {
       const authenticate = vi.fn().mockReturnValue(true);
       const getToken = vi.fn().mockReturnValue("dynamictoken");
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -363,7 +363,7 @@ describe("Authentication", () => {
       const authenticate = vi.fn().mockReturnValue(true);
       const getToken = vi.fn().mockResolvedValue("asynctoken");
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -396,7 +396,7 @@ describe("Authentication", () => {
       const authenticate = vi.fn().mockReturnValue(true);
       const specialToken = "token+with spaces&special=chars";
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -427,7 +427,7 @@ describe("Authentication", () => {
     it("should handle existing query parameters in address", async () => {
       const authenticate = vi.fn().mockReturnValue(true);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -462,7 +462,7 @@ describe("Authentication", () => {
     it("should fail to connect when authentication is rejected", async () => {
       const authenticate = vi.fn().mockReturnValue(false);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -486,7 +486,7 @@ describe("Authentication", () => {
   });
 
   describe("Real-world authentication scenarios", () => {
-    let clients: ClientUiState<any>[];
+    let clients: YuzuClient<any>[];
 
     beforeEach(() => {
       clients = [];
@@ -499,12 +499,12 @@ describe("Authentication", () => {
       }
     });
 
-    function createClient<T extends object>(initial: T, config?: any): ClientUiState<T> {
+    function createClient<T extends object>(initial: T, config?: any): YuzuClient<T> {
       const fullConfig = config || {};
       if (!fullConfig.address) {
         fullConfig.address = `ws://localhost:${TEST_PORT}/api/yuzu`;
       }
-      const client = new ClientUiState(initial, fullConfig);
+      const client = new YuzuClient(initial, fullConfig);
       clients.push(client);
       return client;
     }
@@ -525,7 +525,7 @@ describe("Authentication", () => {
         return user !== null;
       };
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },
@@ -561,7 +561,7 @@ describe("Authentication", () => {
 
       const authenticate = vi.fn().mockReturnValue(true);
 
-      serverUiState = new ServerUiState(
+      yuzuServer = new YuzuServer(
         { count: 0 },
         {
           serverConfig: { port: TEST_PORT },

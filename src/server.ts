@@ -22,11 +22,11 @@ export interface AuthenticationInfo {
 }
 
 /**
- * Configuration options for initializing a ServerUiState instance.
+ * Configuration options for initializing a YuzuServer instance.
  * Must provide either serverRef (existing HTTP server) OR serverConfig (new server settings), but not both.
  * Alternatively, use externalTransport mode to manage messaging manually.
  */
-export interface ServerUiStateConfig {
+export interface YuzuServerConfig {
   /**
    * Reference to an existing HTTP server to attach WebSocket server to.
    * Provide either this OR serverConfig, not both.
@@ -100,7 +100,7 @@ export interface ServerUiStateConfig {
    * @default false
    * @example
    * ```typescript
-   * const server = new ServerUiState(initialState, {
+   * const server = new YuzuServer(initialState, {
    *   externalTransport: true,
    *   onMessage: (message) => myWebSocket.send(message)
    * });
@@ -151,7 +151,7 @@ export interface YuzuLogger {
 
 /**
  * Log level identifiers for controlling which messages are logged.
- * Used in ServerUiStateConfig.logLevels to filter console output.
+ * Used in YuzuServerConfig.logLevels to filter console output.
  */
 export type YuzuLoggerLevel = "debug" | "log" | "warn" | "error";
 
@@ -173,7 +173,7 @@ class DefaultLogger implements YuzuLogger {
   }
 }
 
-export class ServerUiState<T extends object> {
+export class YuzuServer<T extends object> {
 
   private _state: T;
   /**
@@ -213,7 +213,7 @@ export class ServerUiState<T extends object> {
   private onMessageCallback?: (message: string, clientId?: string) => void;
 
   /**
-   * Creates a new ServerUiState instance that manages state and broadcasts changes to clients.
+   * Creates a new YuzuServer instance that manages state and broadcasts changes to clients.
    * @param initial - The initial state object. All properties will be watched for changes.
    * @param config - Configuration for the WebSocket server and logging
    * @throws Error if neither serverRef nor serverConfig is provided (unless using externalTransport)
@@ -221,19 +221,19 @@ export class ServerUiState<T extends object> {
    * @example
    * ```typescript
    * // Using an existing HTTP server
-   * const server = new ServerUiState(
+   * const server = new YuzuServer(
    *   { count: 0 },
    *   { serverRef: httpServer }
    * );
    *
    * // Creating a new server on a specific port
-   * const server = new ServerUiState(
+   * const server = new YuzuServer(
    *   { count: 0 },
    *   { serverConfig: { port: 3000 } }
    * );
    *
    * // Using external transport
-   * const server = new ServerUiState(
+   * const server = new YuzuServer(
    *   { count: 0 },
    *   {
    *     externalTransport: true,
@@ -242,7 +242,7 @@ export class ServerUiState<T extends object> {
    * );
    * ```
    */
-  constructor(initial: T, config: ServerUiStateConfig) {
+  constructor(initial: T, config: YuzuServerConfig) {
 
     if (config.logger !== undefined) {
       this.logger = config.logger;
@@ -263,7 +263,7 @@ export class ServerUiState<T extends object> {
         throw new Error(`onMessage callback must be provided when using externalTransport mode`);
       }
       this.onMessageCallback = config.onMessage;
-      this.logger.log("ServerUiState initialized in external transport mode");
+      this.logger.log("YuzuServer initialized in external transport mode");
     } else {
       // WebSocket mode
       if (!config.serverRef && !config.serverConfig) {
@@ -344,7 +344,7 @@ export class ServerUiState<T extends object> {
 
   /**
    * Closes the WebSocket server and cleans up resources.
-   * If an HTTP server was created by ServerUiState, it will also be closed.
+   * If an HTTP server was created by YuzuServer, it will also be closed.
    * If an external HTTP server was provided, it will NOT be closed.
    * Does nothing in externalTransport mode.
    */
@@ -662,7 +662,7 @@ export class ServerUiState<T extends object> {
 //   keyedObject: {},
 // };
 
-// const svr = new ServerUiState<State>(initialState, {
+// const svr = new YuzuServer<State>(initialState, {
 //   serverConfig: { port: 3412 },
 //   serverRef: undefined,
 // });

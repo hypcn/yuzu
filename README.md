@@ -76,12 +76,12 @@ export const INITIAL_UI_STATE = {
 } as const;
 
 /** ... OR define a separate interface... */
-export interface UiState {
+export interface YuzuState {
   shades: ShadeStatus[],
   fixtures: FixtureStatus[],
 };
 /** ... and constant. */
-export const INITIAL_UI_STATE: UiState = {
+export const INITIAL_UI_STATE: YuzuState = {
   shades: [],
   fixtures: [],
 };
@@ -98,16 +98,16 @@ Example:
 ```ts
 // server/ui-state/ui-state.service.ts
 
-import { ServerUiState } from "@hypericon/yuzu";
+import { YuzuServer } from "@hypericon/yuzu";
 import { Server } from "http";
-import { INITIAL_UI_STATE, UiState, ShadeStatus } from "../../ui-state";
+import { INITIAL_UI_STATE, yuzu, ShadeStatus } from "../../ui-state";
 
-export class UiStateService {
+export class yuzuService {
 
-  private uiState: ServerUiState;
+  private yuzu: YuzuServer;
 
   constructor(opts: { server: Server | undefined, port: number | undefined }) {
-    this.uiState = new ServerUiState(INITIAL_UI_STATE, {
+    this.yuzu = new YuzuServer(INITIAL_UI_STATE, {
       serverRef: opts.server,
       serverConfig: opts.port ? { port: opts.port } : undefined,
       // Optional: Enable WebSocket compression (can reduce bandwidth by 60-80%)
@@ -130,14 +130,14 @@ export class UiStateService {
   // or receiving method calls from other parts of the application.
 
   updateShadeStatus(id: string, status: ShadeStatus) {
-    const shadeIndex = this.uiState.state.shades.findIndex(s => s.id === id);
+    const shadeIndex = this.yuzu.state.shades.findIndex(s => s.id === id);
 
-    // Simply interact with the state property of the ServerUiState object,
+    // Simply interact with the state property of the YuzuServer object,
     // and all updates will be sent to all connected clients.
     if (shadeIndex > -1) {
-      this.uiState.state.shades[shadeIndex] = status;
+      this.yuzu.state.shades[shadeIndex] = status;
     } else {
-      this.uiState.state.shades.push(status);
+      this.yuzu.state.shades.push(status);
     }
   }
 }
@@ -152,12 +152,12 @@ Example Mithril page component:
 ```ts
 // client/pages/ExampleStatePage.ts
 
-import { ClientUiState, YuzuSubscription } from "@hypericon/yuzu";
+import { YuzuClient, YuzuSubscription } from "@hypericon/yuzu";
 import m from "mithril";
 import { UI_STATE, INITIAL_UI_STATE } from "../../ui-state";
 
 // Client UI state singleton reference
-const uiState = new ClientUiState(INITIAL_UI_STATE);
+const yuzu = new YuzuClient(INITIAL_UI_STATE);
 
 // Example Mithril page component
 export const ExampleStatePage: m.Component<{}, {
@@ -169,10 +169,10 @@ export const ExampleStatePage: m.Component<{}, {
 
     // Listen to changes on the subscribable state property
     // Every object and primitive has a .subscribe() method added for precise listening
-    this.sub.add(uiState.state$.shades.subscribe((shades) => console.log("shades updated")));
+    this.sub.add(yuzu.state$.shades.subscribe((shades) => console.log("shades updated")));
 
     // Listen to changes on ALL state keys
-    this.sub.add(uiState.onAny((value, path) => {
+    this.sub.add(yuzu.onAny((value, path) => {
       console.log(`State path "${path.join(".")}" updated, redrawing...`);
       m.redraw();
     }));
@@ -191,13 +191,13 @@ export const ExampleStatePage: m.Component<{}, {
       // The .state$ property has the same values, but reading the property ensures that .subscribe()
       // functions are set up, so can slightly decrease performance if subscribing is not immediately needed
       m("h2", "Shade Status:"),
-      uiState.state.shades.map(s => {
+      yuzu.state.shades.map(s => {
         const alertMsg = s.alerts.length > 0 ? s.alerts.join(", ") : "no alerts";
         return m("p", `Shade ${s.id}: ${s.statusName} @${s.position}% (${alertMsg})`);
       }),
 
       // Read state using the .state property
-      m("p", `Fixture ABC123 alerts: ${uiState.state.fixtures
+      m("p", `Fixture ABC123 alerts: ${yuzu.state.fixtures
                                         .filter(f => f.id === "abc123")
                                         .map(f => `${f.alerts}`)}`),
     ]);
@@ -212,15 +212,15 @@ Yuzu supports optional authentication for WebSocket connections using query para
 
 ### Server-Side Authentication
 
-Implement authentication by providing an `authenticate` callback in the `ServerUiState` configuration. The callback receives connection information and returns `true` to accept or `false` to reject the connection. The callback can be synchronous or asynchronous (return a `Promise`).
+Implement authentication by providing an `authenticate` callback in the `YuzuServer` configuration. The callback receives connection information and returns `true` to accept or `false` to reject the connection. The callback can be synchronous or asynchronous (return a `Promise`).
 
 ```ts
-import { ServerUiState, AuthenticationInfo } from "@hypericon/yuzu";
+import { YuzuServer, AuthenticationInfo } from "@hypericon/yuzu";
 import { INITIAL_UI_STATE } from "./shared/ui-state";
 
 const validTokens = new Set(["secret-token-123", "another-valid-token"]);
 
-const uiState = new ServerUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuServer(INITIAL_UI_STATE, {
   serverConfig: { port: 3000 },
   
   // Synchronous authentication
@@ -246,15 +246,15 @@ Clients can provide authentication tokens in two ways:
 Provide a token string that will be appended to all connection attempts:
 
 ```ts
-import { ClientUiState } from "@hypericon/yuzu";
+import { YuzuClient } from "@hypericon/yuzu";
 import { INITIAL_UI_STATE } from "./shared/ui-state";
 
-const uiState = new ClientUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuClient(INITIAL_UI_STATE, {
   address: "ws://localhost:3000",
   token: "secret-token-123"
 });
 
-await uiState.connect();
+await yuzu.connect();
 // Connects to: ws://localhost:3000?token=secret-token-123
 ```
 
@@ -263,7 +263,7 @@ await uiState.connect();
 Provide a `getToken` callback for dynamic token retrieval (e.g., refreshing expired tokens). The callback can be synchronous or asynchronous:
 
 ```ts
-const uiState = new ClientUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuClient(INITIAL_UI_STATE, {
   address: "ws://localhost:3000",
   getToken: async () => {
     // Fetch fresh token from your auth service
@@ -273,7 +273,7 @@ const uiState = new ClientUiState(INITIAL_UI_STATE, {
   }
 });
 
-await uiState.connect();
+await yuzu.connect();
 ```
 
 ### Real-World Examples
@@ -284,7 +284,7 @@ await uiState.connect();
 // Server
 import jwt from 'jsonwebtoken';
 
-const uiState = new ServerUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuServer(INITIAL_UI_STATE, {
   serverConfig: { port: 3000 },
   authenticate: async (info: AuthenticationInfo) => {
     try {
@@ -303,7 +303,7 @@ const uiState = new ServerUiState(INITIAL_UI_STATE, {
 });
 
 // Client
-const uiState = new ClientUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuClient(INITIAL_UI_STATE, {
   address: "ws://localhost:3000",
   getToken: async () => {
     // Get JWT from localStorage or auth service
@@ -317,7 +317,7 @@ const uiState = new ClientUiState(INITIAL_UI_STATE, {
 The `getToken` callback is called on every connection attempt, making it ideal for token refresh scenarios:
 
 ```ts
-const uiState = new ClientUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuClient(INITIAL_UI_STATE, {
   address: "ws://localhost:3000",
   getToken: async () => {
     // Check if token is expired
@@ -358,7 +358,7 @@ Authentication is completely optional. Existing code without authentication cont
 
 ```ts
 // No authentication - works as before
-const uiState = new ServerUiState(INITIAL_UI_STATE, {
+const yuzu = new YuzuServer(INITIAL_UI_STATE, {
   serverConfig: { port: 3000 }
 });
 ```
@@ -393,7 +393,7 @@ Yuzu continues to handle:
 Configure the server with `externalTransport: true` and provide an `onMessage` callback:
 
 ```ts
-import { ServerUiState } from "@hypericon/yuzu";
+import { YuzuServer } from "@hypericon/yuzu";
 import WebSocket, { WebSocketServer } from "ws";
 import { INITIAL_UI_STATE } from "./shared/ui-state";
 
@@ -405,7 +405,7 @@ const clients = new Map<string, WebSocket>();
 let nextClientId = 1;
 
 // Create Yuzu server in external transport mode
-const yuzuServer = new ServerUiState(INITIAL_UI_STATE, {
+const yuzuServer = new YuzuServer(INITIAL_UI_STATE, {
   externalTransport: true,
   onMessage: (message, clientId) => {
     if (clientId) {
@@ -466,14 +466,14 @@ yuzuServer.state.counter++;
 Configure the client with `externalTransport: true` and provide an `onMessage` callback:
 
 ```ts
-import { ClientUiState } from "@hypericon/yuzu";
+import { YuzuClient } from "@hypericon/yuzu";
 import { INITIAL_UI_STATE } from "./shared/ui-state";
 
 // Create your own WebSocket connection
 const ws = new WebSocket("ws://localhost:3000/ws");
 
 // Create Yuzu client in external transport mode
-const yuzuClient = new ClientUiState(INITIAL_UI_STATE, {
+const yuzuClient = new YuzuClient(INITIAL_UI_STATE, {
   externalTransport: true,
   onMessage: (message) => {
     // Send Yuzu messages through your WebSocket
@@ -526,14 +526,14 @@ See the [external-transport example](./example/external-transport) for a working
 
 ```ts
 import express from "express";
-import { ServerUiState } from "@hypericon/yuzu";
+import { YuzuServer } from "@hypericon/yuzu";
 
 const app = express();
 app.use(express.json());
 
 const pendingMessages = new Map<string, string[]>();
 
-const yuzuServer = new ServerUiState(INITIAL_UI_STATE, {
+const yuzuServer = new YuzuServer(INITIAL_UI_STATE, {
   externalTransport: true,
   onMessage: (message, clientId) => {
     if (clientId) {
@@ -571,12 +571,12 @@ app.post("/message/:clientId", (req, res) => {
 
 ```ts
 import express from "express";
-import { ServerUiState } from "@hypericon/yuzu";
+import { YuzuServer } from "@hypericon/yuzu";
 
 const app = express();
 const clients = new Map<string, express.Response>();
 
-const yuzuServer = new ServerUiState(INITIAL_UI_STATE, {
+const yuzuServer = new YuzuServer(INITIAL_UI_STATE, {
   externalTransport: true,
   onMessage: (message, clientId) => {
     if (clientId) {
@@ -623,12 +623,12 @@ Switching from standard mode to external transport mode is straightforward:
 
 ```ts
 // Server
-const yuzu = new ServerUiState(initialState, {
+const yuzu = new YuzuServer(initialState, {
   serverConfig: { port: 3000 }
 });
 
 // Client
-const yuzu = new ClientUiState(initialState, {
+const yuzu = new YuzuClient(initialState, {
   address: "ws://localhost:3000/api/yuzu"
 });
 ```
@@ -641,7 +641,7 @@ const myWss = new WebSocketServer({ port: 3000 });
 const clients = new Map<string, WebSocket>();
 let nextId = 1;
 
-const yuzu = new ServerUiState(initialState, {
+const yuzu = new YuzuServer(initialState, {
   externalTransport: true,
   onMessage: (msg, clientId) => {
     if (clientId) {
@@ -663,7 +663,7 @@ myWss.on("connection", ws => {
 
 // Client
 const myWs = new WebSocket("ws://localhost:3000");
-const yuzu = new ClientUiState(initialState, {
+const yuzu = new YuzuClient(initialState, {
   externalTransport: true,
   onMessage: (msg) => myWs.send(msg)
 });
@@ -689,7 +689,7 @@ import { YuzuSubscription } from '@hypericon/yuzu';
 const sub = new YuzuSubscription();
 
 // Add Yuzu subscription
-sub.add(uiState.state$.count.subscribe(value => console.log(value)));
+sub.add(yuzu.state$.count.subscribe(value => console.log(value)));
 
 // Add RxJS subscription
 const rxjsSub = interval(1000).subscribe(n => console.log(n));
@@ -779,7 +779,7 @@ const initialState: State = {
 And the client subscriptions:
 
 ```ts
-const client = new ClientUiState<...>(...);
+const client = new YuzuClient<...>(...);
 
 const sub1 = client.state$.shadeControllers.subscribe(v => { ... });
 const sub2 = client.state$.shadeControllers["id1"].subscribe(v => { ... });
@@ -836,7 +836,7 @@ It may be the case that state keys be dynamically created/destroyed, for example
 As shown above, the state object can be defined as such to support this case:
 
 ```ts
-export interface UiState {
+export interface YuzuState {
   ...
   transientDevices: {
     [id: string]: DeviceState | undefined,
@@ -854,23 +854,23 @@ Note the union type.
 This can be written to from the server like so:
 
 ```ts
-uiState.state.transientDevices["device1"] = { ... }; // Set device to initial value
-uiState.state.transientDevices["device1"] = { ... }; // Overwrite device value
-uiState.state.transientDevices["device1"].status = " ... "; // Update single key in device
-uiState.state.transientDevices["device1"] = undefined; // Remove device
+yuzu.state.transientDevices["device1"] = { ... }; // Set device to initial value
+yuzu.state.transientDevices["device1"] = { ... }; // Overwrite device value
+yuzu.state.transientDevices["device1"].status = " ... "; // Update single key in device
+yuzu.state.transientDevices["device1"] = undefined; // Remove device
 ```
 
 And listened to from the client like so:
 
 ```ts
 // Receives all updates
-uiState.state$.transientDevices.subscribe(
+yuzu.state$.transientDevices.subscribe(
   (allDevicesObj: { [id: string]: DeviceState | undefined }) => { ... },
 );
 // Receives all updates, on the last update the parameter is undefined
-uiState.state$.transientDevices["device1"].subscribe((device: DeviceState | undefined) => { ... });
+yuzu.state$.transientDevices["device1"].subscribe((device: DeviceState | undefined) => { ... });
 // Receives one update, when the status is explicitly updated
-uiState.state$.transientDevices["device1"].status.subscribe((status: string) => { ... });
+yuzu.state$.transientDevices["device1"].status.subscribe((status: string) => { ... });
 ```
 
 ### Arrays in State Tree

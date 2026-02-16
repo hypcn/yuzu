@@ -1,32 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ClientUiState } from "./client";
-import { ServerUiState } from "./server";
+import { YuzuClient } from "./client";
+import { YuzuServer } from "./server";
 import type { MsgSendComplete, MsgSendPatch, MsgSendPatchBatch } from "./shared";
 
-describe("ClientUiState", () => {
+describe("YuzuClient", () => {
 
   describe("constructor", () => {
     it("should create client with initial state", () => {
       const initialState = { count: 0, name: "test" };
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         address: "ws://localhost:9999/test",
       });
 
-      expect(client).toBeInstanceOf(ClientUiState);
+      expect(client).toBeInstanceOf(YuzuClient);
       expect(client.state).toEqual(initialState);
     });
 
     it("should use default connection config when not provided", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
-      expect(client).toBeInstanceOf(ClientUiState);
+      expect(client).toBeInstanceOf(YuzuClient);
       expect(client.isConnected).toBe(false);
     });
 
     it("should expose state as readonly", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.count).toBe(0);
 
@@ -37,7 +37,7 @@ describe("ClientUiState", () => {
 
     it("should expose subscribable state", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state$).toBeDefined();
       expect(client.state$.count).toBeDefined();
@@ -51,7 +51,7 @@ describe("ClientUiState", () => {
         name: "test",
         active: true,
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.count).toBe(42);
       expect(client.state.name).toBe("test");
@@ -68,7 +68,7 @@ describe("ClientUiState", () => {
           },
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.user.name).toBe("John");
       expect(client.state.user.profile.bio).toBe("Developer");
@@ -79,7 +79,7 @@ describe("ClientUiState", () => {
       const initialState = {
         items: [1, 2, 3, 4, 5],
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.items).toEqual([1, 2, 3, 4, 5]);
       expect(client.state.items[0]).toBe(1);
@@ -90,7 +90,7 @@ describe("ClientUiState", () => {
   describe("readPathExisting", () => {
     it("should read value at simple path", () => {
       const initialState = { count: 42 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       const value = client.readPathExisting(["count"]);
       expect(value).toBe(42);
@@ -104,7 +104,7 @@ describe("ClientUiState", () => {
           },
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       const value = client.readPathExisting(["user", "profile", "name"]);
       expect(value).toBe("John");
@@ -112,7 +112,7 @@ describe("ClientUiState", () => {
 
     it("should throw error for non-existent path", () => {
       const initialState = { count: 42 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(() => {
         client.readPathExisting(["nonexistent"]);
@@ -125,7 +125,7 @@ describe("ClientUiState", () => {
           name: "John",
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(() => {
         client.readPathExisting(["user", "profile", "bio"]);
@@ -134,7 +134,7 @@ describe("ClientUiState", () => {
 
     it("should read empty path as root state", () => {
       const initialState = { count: 42, name: "test" };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       const value = client.readPathExisting([]);
       expect(value).toEqual({ count: 42, name: "test" });
@@ -144,7 +144,7 @@ describe("ClientUiState", () => {
   describe("readPathOptional", () => {
     it("should read existing path", () => {
       const initialState = { count: 42 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       const value = client.readPathOptional(["count"]);
       expect(value).toBe(42);
@@ -152,7 +152,7 @@ describe("ClientUiState", () => {
 
     it("should return undefined for non-existent path", () => {
       const initialState = { count: 42 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       const value = client.readPathOptional(["nonexistent"]);
       expect(value).toBeUndefined();
@@ -164,7 +164,7 @@ describe("ClientUiState", () => {
           name: "John",
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       const value = client.readPathOptional(["user", "profile", "bio"]);
       expect(value).toBeUndefined();
@@ -174,7 +174,7 @@ describe("ClientUiState", () => {
   describe("subscriptions", () => {
     it("should subscribe to state changes via state$ (object level)", () => {
       const initialState = { data: { count: 0 } };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.state$.data.subscribe(listener);
@@ -189,7 +189,7 @@ describe("ClientUiState", () => {
           name: "John",
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.state$.user.subscribe(listener);
@@ -203,7 +203,7 @@ describe("ClientUiState", () => {
           name: "John",
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.state$.user.subscribe(listener);
@@ -213,7 +213,7 @@ describe("ClientUiState", () => {
 
     it("should allow multiple subscriptions to same path", () => {
       const initialState = { data: { count: 0 } };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener1 = vi.fn();
       const listener2 = vi.fn();
 
@@ -228,7 +228,7 @@ describe("ClientUiState", () => {
   describe("onChangeExisting", () => {
     it("should subscribe to existing path", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.onChangeExisting(["count"], listener);
@@ -238,7 +238,7 @@ describe("ClientUiState", () => {
 
     it("should throw error for non-existent path", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       expect(() => {
@@ -254,7 +254,7 @@ describe("ClientUiState", () => {
           },
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.onChangeExisting(["user", "profile", "name"], listener);
@@ -266,7 +266,7 @@ describe("ClientUiState", () => {
   describe("onChangeOptional", () => {
     it("should subscribe to existing path", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.onChangeOptional(["count"], listener);
@@ -276,7 +276,7 @@ describe("ClientUiState", () => {
 
     it("should subscribe to non-existent path without error", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       expect(() => {
@@ -291,7 +291,7 @@ describe("ClientUiState", () => {
           name: "John",
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       expect(() => {
@@ -304,7 +304,7 @@ describe("ClientUiState", () => {
   describe("onAny", () => {
     it("should subscribe to all state changes", () => {
       const initialState = { count: 0, name: "test" };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.onAny(listener);
@@ -314,7 +314,7 @@ describe("ClientUiState", () => {
 
     it("should return a subscription that can be unsubscribed", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.onAny(listener);
@@ -326,14 +326,14 @@ describe("ClientUiState", () => {
   describe("connection state", () => {
     it("should expose isConnected property", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(typeof client.isConnected).toBe("boolean");
     });
 
     it("should expose connected$ observable", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.connected$).toBeDefined();
       expect(client.connected$.subscribe).toBeDefined();
@@ -341,7 +341,7 @@ describe("ClientUiState", () => {
 
     it("should allow subscribing to connection changes", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       const sub = client.connected$.subscribe(listener);
@@ -354,7 +354,7 @@ describe("ClientUiState", () => {
   describe("reload", () => {
     it("should have reload method", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.reload).toBeDefined();
       expect(typeof client.reload).toBe("function");
@@ -362,7 +362,7 @@ describe("ClientUiState", () => {
 
     it("should be callable", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       // Just check that the method exists and is callable
       // It may throw if not connected, which is expected
@@ -373,7 +373,7 @@ describe("ClientUiState", () => {
   describe("reconnect", () => {
     it("should have reconnect method", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.reconnect).toBeDefined();
       expect(typeof client.reconnect).toBe("function");
@@ -381,7 +381,7 @@ describe("ClientUiState", () => {
 
     it("should be callable", () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       // Should not throw when called
       expect(() => client.reconnect()).not.toThrow();
@@ -389,7 +389,7 @@ describe("ClientUiState", () => {
 
     it("should trigger connection state change", async () => {
       const initialState = { count: 0 };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       client.connected$.subscribe(listener);
@@ -409,8 +409,8 @@ describe("ClientUiState", () => {
   });
 
   describe("integration with server", () => {
-    let server: ServerUiState<any>;
-    let clients: ClientUiState<any>[];
+    let server: YuzuServer<any>;
+    let clients: YuzuClient<any>[];
     let currentPort: number;
     let portCounter = 3200; // Start from base port and increment
 
@@ -419,7 +419,7 @@ describe("ClientUiState", () => {
       currentPort = portCounter++;
       clients = [];
       const initialState = { count: 0, name: "test" };
-      server = new ServerUiState(initialState, {
+      server = new YuzuServer(initialState, {
         serverRef: undefined,
         serverConfig: { port: currentPort },
         logger: {
@@ -443,12 +443,12 @@ describe("ClientUiState", () => {
       }
     });
 
-    function createClient<T extends object>(initial: T, config?: any): ClientUiState<T> {
+    function createClient<T extends object>(initial: T, config?: any): YuzuClient<T> {
       const fullConfig = config || {};
       if (!fullConfig.address) {
         fullConfig.address = `ws://localhost:${currentPort}/api/yuzu`;
       }
-      const client = new ClientUiState(initial, fullConfig);
+      const client = new YuzuClient(initial, fullConfig);
       clients.push(client);
       return client;
     }
@@ -646,7 +646,7 @@ it("should receive patch updates from server", async () => {
           },
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.level1.level2.level3.value).toBe("deep");
     });
@@ -661,7 +661,7 @@ it("should receive patch updates from server", async () => {
           },
         },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
       const listener = vi.fn();
 
       // Subscribe to the level3 object, not the primitive value
@@ -682,7 +682,7 @@ it("should receive patch updates from server", async () => {
           { id: "item2", value: 20 },
         ] as Item[],
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.items).toHaveLength(2);
       expect(client.state.items[0].value).toBe(10);
@@ -696,7 +696,7 @@ it("should receive patch updates from server", async () => {
           device2: { status: "inactive" },
         } as { [key: string]: { status: string } },
       };
-      const client = new ClientUiState(initialState);
+      const client = new YuzuClient(initialState);
 
       expect(client.state.devices["device1"].status).toBe("active");
       expect(client.state.devices["device2"].status).toBe("inactive");
@@ -708,12 +708,12 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
 
-      expect(client).toBeInstanceOf(ClientUiState);
+      expect(client).toBeInstanceOf(YuzuClient);
       expect(client.state).toEqual(initialState);
       expect(client.isConnected).toBe(false);
     });
@@ -722,7 +722,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
 
       expect(() => {
-        new ClientUiState(initialState, {
+        new YuzuClient(initialState, {
           externalTransport: true,
         });
       }).toThrow("onMessage callback must be provided when using externalTransport mode");
@@ -732,7 +732,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
         address: "ws://localhost:9999",
@@ -740,7 +740,7 @@ it("should receive patch updates from server", async () => {
         token: "secret",
       });
 
-      expect(client).toBeInstanceOf(ClientUiState);
+      expect(client).toBeInstanceOf(YuzuClient);
       expect(client.isConnected).toBe(false); // Always false in external mode
     });
 
@@ -748,7 +748,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -765,7 +765,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -784,7 +784,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0, value: 10 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -804,7 +804,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0, value: 10 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -827,7 +827,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         address: "ws://localhost:9999",
       });
 
@@ -850,7 +850,7 @@ it("should receive patch updates from server", async () => {
       const onMessageMock = vi.fn();
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -869,7 +869,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -893,7 +893,7 @@ it("should receive patch updates from server", async () => {
       const onMessageMock = vi.fn();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -913,7 +913,7 @@ it("should receive patch updates from server", async () => {
       const onMessageMock = vi.fn();
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -932,7 +932,7 @@ it("should receive patch updates from server", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });
@@ -955,7 +955,7 @@ it("should receive patch updates from server", async () => {
       };
       const onMessageMock = vi.fn();
 
-      const client = new ClientUiState(initialState, {
+      const client = new YuzuClient(initialState, {
         externalTransport: true,
         onMessage: onMessageMock,
       });

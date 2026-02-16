@@ -32,7 +32,7 @@ interface StateListener {
 /**
  * Configuration options for the client WebSocket connection.
  */
-export interface ClientUiStateSocketConfig {
+export interface YuzuClientConfig {
   /**
    * The full websocket address to connect to
    * @default "ws://localhost:3000/api/yuzu"
@@ -74,7 +74,7 @@ export interface ClientUiStateSocketConfig {
    * @default false
    * @example
    * ```typescript
-   * const client = new ClientUiState(initialState, {
+   * const client = new YuzuClient(initialState, {
    *   externalTransport: true,
    *   onMessage: (message) => myWebSocket.send(message)
    * });
@@ -100,7 +100,7 @@ export interface ClientUiStateSocketConfig {
   onMessage?: (message: string) => void;
 }
 
-export class ClientUiState<T extends object> {
+export class YuzuClient<T extends object> {
 
   /** Internal state. Do not edit directly, use setState() or patchState() */
   private _state: T;
@@ -122,7 +122,7 @@ export class ClientUiState<T extends object> {
   private listeners: StateListener[] = [];
 
   private ws: WebSocket | undefined;
-  private wsConfig: ClientUiStateSocketConfig = {
+  private config: YuzuClientConfig = {
     address: SETTINGS.CLIENT_DEFAULT_TARGET_ADDRESS,
     reconnectTimeout: SETTINGS.CLIENT_DEFAULT_RECONNECT_TIMEOUT,
   };
@@ -144,7 +144,7 @@ export class ClientUiState<T extends object> {
   get isConnected() { return this._connected.value; }
 
   /**
-   * Creates a new ClientUiState instance that connects to a Yuzu server.
+   * Creates a new YuzuClient instance that connects to a Yuzu server.
    * The client will automatically connect to the server and synchronize state.
    * @param initial - The initial state object. This should match the server's initial state structure.
    * @param config - Optional configuration for the WebSocket connection or external transport
@@ -152,13 +152,13 @@ export class ClientUiState<T extends object> {
    * @example
    * ```typescript
    * // WebSocket mode
-   * const client = new ClientUiState(
+   * const client = new YuzuClient(
    *   { count: 0, name: "default" },
    *   { address: "ws://localhost:3000/api/yuzu" }
    * );
    *
    * // External transport mode
-   * const client = new ClientUiState(
+   * const client = new YuzuClient(
    *   { count: 0, name: "default" },
    *   {
    *     externalTransport: true,
@@ -167,20 +167,20 @@ export class ClientUiState<T extends object> {
    * );
    * ```
    */
-  constructor(initial: T, config?: Partial<ClientUiStateSocketConfig>) {
+  constructor(initial: T, config?: Partial<YuzuClientConfig>) {
     this._state = initial;
     this._subscribableState = this.setState(initial);
 
-    this.wsConfig = Object.assign(this.wsConfig, config);
-    this.externalTransport = this.wsConfig.externalTransport || false;
+    this.config = Object.assign(this.config, config);
+    this.externalTransport = this.config.externalTransport || false;
 
     if (this.externalTransport) {
       // External transport mode
-      if (!this.wsConfig.onMessage) {
+      if (!this.config.onMessage) {
         throw new Error(`onMessage callback must be provided when using externalTransport mode`);
       }
-      this.onMessageCallback = this.wsConfig.onMessage;
-      console.log("ClientUiState initialized in external transport mode");
+      this.onMessageCallback = this.config.onMessage;
+      console.log("YuzuClient initialized in external transport mode");
     } else {
       // WebSocket mode
       this.connect();
@@ -200,14 +200,14 @@ export class ClientUiState<T extends object> {
     console.log("Connecting...");
 
     // Build connection URL with authentication token if provided
-    let connectionUrl = this.wsConfig.address;
+    let connectionUrl = this.config.address;
 
     // Get token from either token or getToken
     let token: string | undefined;
-    if (this.wsConfig.getToken) {
-      token = await this.wsConfig.getToken();
-    } else if (this.wsConfig.token) {
-      token = this.wsConfig.token;
+    if (this.config.getToken) {
+      token = await this.config.getToken();
+    } else if (this.config.token) {
+      token = this.config.token;
     }
 
     // Append token as query parameter if present
@@ -233,10 +233,10 @@ export class ClientUiState<T extends object> {
         return;
       }
 
-      console.log(`Socket closed, reconnecting in ${this.wsConfig.reconnectTimeout}ms...`);
+      console.log(`Socket closed, reconnecting in ${this.config.reconnectTimeout}ms...`);
       this.reconnectTimeoutId = setTimeout(() => {
         this.connect();
-      }, this.wsConfig.reconnectTimeout);
+      }, this.config.reconnectTimeout);
     });
 
     this.ws.addEventListener("error", (ev) => {
@@ -790,7 +790,7 @@ export class ClientUiState<T extends object> {
 //   keyedObject: {},
 // };
 
-// const client = new ClientUiState(initialState);
+// const client = new YuzuClient(initialState);
 
 // const sub1 = client.onChange(["aNestedObject"], (v) => {});
 

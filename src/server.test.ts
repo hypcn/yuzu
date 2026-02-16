@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Server } from "http";
 import WebSocket, { WebSocketServer } from "ws";
-import { ServerUiState, ServerUiStateConfig, YuzuLogger } from "./server";
+import { YuzuServer, YuzuServerConfig, YuzuLogger } from "./server";
 import type { MsgSendComplete, MsgSendPatch, MsgSendPatchBatch } from "./shared";
 
-describe("ServerUiState", () => {
+describe("YuzuServer", () => {
   let httpServer: Server;
   let mockLogger: YuzuLogger;
-  let servers: ServerUiState<any>[];
+  let servers: YuzuServer<any>[];
 
   beforeEach(() => {
     httpServer = new Server();
@@ -21,7 +21,7 @@ describe("ServerUiState", () => {
   });
 
   afterEach(async () => {
-    // Close all ServerUiState instances first
+    // Close all YuzuServer instances first
     await Promise.all(servers.map(s => s.close()));
 
     // Then close the HTTP server if still open
@@ -32,9 +32,9 @@ describe("ServerUiState", () => {
     }
   });
 
-  // Helper function to create and track ServerUiState instances
-  function createServer<T extends object>(initial: T, config: ServerUiStateConfig): ServerUiState<T> {
-    const server = new ServerUiState(initial, config);
+  // Helper function to create and track YuzuServer instances
+  function createServer<T extends object>(initial: T, config: YuzuServerConfig): YuzuServer<T> {
+    const server = new YuzuServer(initial, config);
     servers.push(server);
     return server;
   }
@@ -42,7 +42,7 @@ describe("ServerUiState", () => {
   describe("constructor", () => {
     it("should create server with existing HTTP server", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -50,13 +50,13 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
       expect(server.state).toEqual(initialState);
     });
 
     it("should create server with new HTTP server on specified port", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port: 0 }, // Port 0 = random available port
         logger: mockLogger,
@@ -64,26 +64,26 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
       expect(server.state).toEqual(initialState);
     });
 
     it("should throw error if neither serverRef nor serverConfig provided", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: undefined,
         logger: mockLogger,
       };
 
       expect(() => {
-        new ServerUiState(initialState, config);
+        new YuzuServer(initialState, config);
       }).toThrow("Either an existing HTTP server or new server config must be supplied");
     });
 
     it("should use custom path when provided", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         path: "/custom/path",
@@ -92,12 +92,12 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
     });
 
     it("should add leading slash to path if not provided", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         path: "custom/path",
@@ -106,24 +106,24 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
     });
 
     it("should use default logger when logger not provided", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
       };
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
     });
 
     it("should set batchDelay when provided", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         batchDelay: 100,
@@ -132,14 +132,14 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
     });
   });
 
   describe("webSocketServer getter", () => {
     it("should expose the underlying WebSocket server", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -154,7 +154,7 @@ describe("ServerUiState", () => {
     it("should allow access to WebSocket server clients", async () => {
       const initialState = { count: 0 };
       const port = 3300;
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port },
         logger: mockLogger,
@@ -183,7 +183,7 @@ describe("ServerUiState", () => {
     it("should allow adding custom event handlers to WebSocket server", async () => {
       const initialState = { count: 0 };
       const port = 3301;
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port },
         logger: mockLogger,
@@ -211,7 +211,7 @@ describe("ServerUiState", () => {
 
     it("should allow monitoring WebSocket server state", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -230,7 +230,7 @@ describe("ServerUiState", () => {
   describe("state proxy behavior", () => {
     it("should return initial state", () => {
       const initialState = { count: 0, name: "test" };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -252,7 +252,7 @@ describe("ServerUiState", () => {
           },
         },
       };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -267,7 +267,7 @@ describe("ServerUiState", () => {
 
     it("should allow modifying state properties", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -289,7 +289,7 @@ describe("ServerUiState", () => {
           },
         },
       };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -306,7 +306,7 @@ describe("ServerUiState", () => {
 
     it("should handle array properties", () => {
       const initialState = { items: [1, 2, 3] };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -323,7 +323,7 @@ describe("ServerUiState", () => {
 
     it("should handle nullable values", () => {
       const initialState = { value: null as number | null };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -347,7 +347,7 @@ describe("ServerUiState", () => {
     it("should accept WebSocket connections", async () => {
       const PORT = 3100;
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port: PORT },
         logger: mockLogger,
@@ -376,7 +376,7 @@ describe("ServerUiState", () => {
     it("should send complete state on request", async () => {
       const PORT = 3101;
       const initialState = { count: 42, name: "test" };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port: PORT },
         logger: mockLogger,
@@ -410,7 +410,7 @@ describe("ServerUiState", () => {
     it("should broadcast patches when state changes", async () => {
       const PORT = 3102;
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port: PORT },
         logger: mockLogger,
@@ -451,7 +451,7 @@ describe("ServerUiState", () => {
     it("should batch patches when batchDelay is set", async () => {
       const PORT = 3103;
       const initialState = { count: 0, name: "test" };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: undefined,
         serverConfig: { port: PORT },
         batchDelay: 50,
@@ -494,7 +494,7 @@ describe("ServerUiState", () => {
   describe("logger", () => {
     it("should use custom logger for logging", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -508,7 +508,7 @@ describe("ServerUiState", () => {
 
     it("should respect logLevels parameter", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logLevels: ["error"],
@@ -516,7 +516,7 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
     });
   });
 
@@ -533,7 +533,7 @@ describe("ServerUiState", () => {
           },
         },
       };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -552,7 +552,7 @@ describe("ServerUiState", () => {
       const initialState = {
         devices: {} as { [key: string]: { status: string } },
       };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -580,7 +580,7 @@ describe("ServerUiState", () => {
       const initialState = {
         items: [] as Item[],
       };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         serverConfig: undefined,
         logger: mockLogger,
@@ -604,7 +604,7 @@ describe("ServerUiState", () => {
     it("should create server with external transport mode", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
@@ -612,27 +612,27 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
       expect(server.state).toEqual(initialState);
       expect(server.webSocketServer).toBeUndefined();
     });
 
     it("should throw error if onMessage not provided in external transport mode", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         logger: mockLogger,
       };
 
       expect(() => {
-        new ServerUiState(initialState, config);
+        new YuzuServer(initialState, config);
       }).toThrow("onMessage callback must be provided when using externalTransport mode");
     });
 
     it("should ignore serverRef/serverConfig in external transport mode", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         serverRef: httpServer,
@@ -642,14 +642,14 @@ describe("ServerUiState", () => {
 
       const server = createServer(initialState, config);
 
-      expect(server).toBeInstanceOf(ServerUiState);
+      expect(server).toBeInstanceOf(YuzuServer);
       expect(server.webSocketServer).toBeUndefined();
     });
 
     it("should call onMessage when state is changed", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
@@ -671,7 +671,7 @@ describe("ServerUiState", () => {
     it("should call onMessage with clientId when handling client message", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
@@ -693,7 +693,7 @@ describe("ServerUiState", () => {
     it("should handle client message without clientId", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
@@ -713,7 +713,7 @@ describe("ServerUiState", () => {
 
     it("should warn when handleClientMessage called in non-external mode", () => {
       const initialState = { count: 0 };
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         serverRef: httpServer,
         logger: mockLogger,
       };
@@ -731,7 +731,7 @@ describe("ServerUiState", () => {
     it("should handle invalid JSON in handleClientMessage", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
@@ -750,7 +750,7 @@ describe("ServerUiState", () => {
     it("should support batching in external transport mode", async () => {
       const initialState = { count: 0, value: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         batchDelay: 10,
@@ -779,7 +779,7 @@ describe("ServerUiState", () => {
     it("should close cleanly in external transport mode", async () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
@@ -793,7 +793,7 @@ describe("ServerUiState", () => {
     it("should handle multiple clients with different IDs", () => {
       const initialState = { count: 0 };
       const onMessageMock = vi.fn();
-      const config: ServerUiStateConfig = {
+      const config: YuzuServerConfig = {
         externalTransport: true,
         onMessage: onMessageMock,
         logger: mockLogger,
