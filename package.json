@@ -27,6 +27,7 @@
     "lint-fix": "eslint . --fix"
   },
   "dependencies": {
+    "@types/ws": "^8.18.1",
     "ws": "^8.19.0"
   },
   "peerDependencies": {
@@ -37,7 +38,6 @@
     "@stylistic/eslint-plugin": "^5.8.0",
     "@types/mithril": "^2.0.6",
     "@types/node": "^22.19.11",
-    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",
     "concurrently": "^9.2.1",
