@@ -301,18 +301,18 @@ so subscribers receive an initial value immediately on subscribe.
 
 ## Tasks
 
-- [ ] **T1 — Config types**: Add `ReconnectConfig` to `YuzuClientConfig` in `src/client.ts`; mark `reconnectTimeout` `@deprecated`.
-- [ ] **T2 — Defaults**: Add `CLIENT_DEFAULT_RECONNECT_*` constants to `YUZU_SETTINGS` in `src/shared.ts` (base delay, multiplier, max delay, jitter, max attempts).
-- [ ] **T3 — Internal state**: Add `autoReconnectEnabled`, `reconnectAttempt`, `gaveUp`, `_suppressNextCloseSchedule`, and the `reconnectState$` subject/observable (seeded `{ status: "disconnected", attempt: 0 }`) to `YuzuClient`.
-- [ ] **T4 — `computeDelay()`**: Implement the pure delay function with strategy + jitter.
-- [ ] **T5 — `connect()` hardening**: Wrap `getToken()` in try/catch; reset `reconnectAttempt`/`gaveUp` and emit `connected` on `open`.
-- [ ] **T6 — `close` handler rewrite**: Replace the `setTimeout` block with the retry-scheduling logic above (check `_suppressNextCloseSchedule` first, then `autoReconnectEnabled`, attempt counter, maxAttempts, gave-up emission).
-- [ ] **T7 — `setAutoReconnect()`**: New public method; warn+no-op in externalTransport mode; cancel pending timer when pausing, kick a `connect()` when resuming while disconnected (and `!gaveUp`).
-- [ ] **T8 — `reconnect()`/`disconnect()` update**: `reconnect()` resets attempt counter, sets `_suppressNextCloseSchedule`, closes existing socket, connects immediately. `disconnect()` takes `options?: { reconnect?: boolean }`; warn+no-op in externalTransport mode; `reconnect:false` (default) sets `autoReconnectEnabled = false`; `reconnect:true` lets the close handler schedule. Remove the `isManualReconnect` flag entirely.
-- [ ] **T9 — Backward-compat shim**: In the constructor, merge `reconnectTimeout` into `reconnect.baseDelayMs` if `reconnect` is absent.
-- [ ] **T10 — Tests**: Add `client.test.ts` cases for: fixed vs exponential delay values, jitter bounds, maxAttempts → gave-up, `setAutoReconnect(false)` cancels pending retry, `setAutoReconnect(true)` resumes (but not after `gaveUp`), `getToken()` rejection connects without token + logs warning, `reconnect()` resets counter and doesn't double-schedule, `disconnect({ reconnect: true })` schedules a reconnect, `disconnect({ reconnect: false })` (default) suppresses it, `disconnect({ reconnect: true })` while already disconnected kicks `connect()` directly, all reconnect APIs warn+no-op in externalTransport mode. Use fake timers.
-- [ ] **T11 — Docs**: Update the JSDoc on `YuzuClientConfig` and `disconnect()`, and add a short "Reconnection" section to `README.md`.
-- [ ] **T12 — Version bump**: `1.1.0` (additive, non-breaking) → `npm publish`.
+- [x] **T1 — Config types**: Add `ReconnectConfig` to `YuzuClientConfig` in `src/client.ts`; mark `reconnectTimeout` `@deprecated`.
+- [x] **T2 — Defaults**: Add `CLIENT_DEFAULT_RECONNECT_*` constants to `YUZU_SETTINGS` in `src/shared.ts` (base delay, multiplier, max delay, jitter, max attempts).
+- [x] **T3 — Internal state**: Add `autoReconnectEnabled`, `reconnectAttempt`, `gaveUp`, `_suppressNextCloseSchedule`, and the `reconnectState$` subject/observable (seeded `{ status: "disconnected", attempt: 0 }`) to `YuzuClient`.
+- [x] **T4 — `computeDelay()`**: Implement the pure delay function with strategy + jitter.
+- [x] **T5 — `connect()` hardening**: Wrap `getToken()` in try/catch; reset `reconnectAttempt`/`gaveUp` and emit `connected` on `open`.
+- [x] **T6 — `close` handler rewrite**: Replace the `setTimeout` block with the retry-scheduling logic above (check `_suppressNextCloseSchedule` first, then `autoReconnectEnabled`, attempt counter, maxAttempts, gave-up emission).
+- [x] **T7 — `setAutoReconnect()`**: New public method; warn+no-op in externalTransport mode; cancel pending timer when pausing, kick a `connect()` when resuming while disconnected (and `!gaveUp`).
+- [x] **T8 — `reconnect()`/`disconnect()` update**: `reconnect()` resets attempt counter, sets `_suppressNextCloseSchedule`, closes existing socket, connects immediately. `disconnect()` takes `options?: { reconnect?: boolean }`; warn+no-op in externalTransport mode; `reconnect:false` (default) sets `autoReconnectEnabled = false`; `reconnect:true` lets the close handler schedule. Remove the `isManualReconnect` flag entirely.
+- [x] **T9 — Backward-compat shim**: In the constructor, merge `reconnectTimeout` into `reconnect.baseDelayMs` if `reconnect` is absent.
+- [x] **T10 — Tests**: Add `client.test.ts` cases for: fixed vs exponential delay values, jitter bounds, maxAttempts → gave-up, `setAutoReconnect(false)` cancels pending retry, `setAutoReconnect(true)` resumes (but not after `gaveUp`), `getToken()` rejection connects without token + logs warning, `reconnect()` resets counter and doesn't double-schedule, `disconnect({ reconnect: true })` schedules a reconnect, `disconnect({ reconnect: false })` (default) suppresses it, `disconnect({ reconnect: true })` while already disconnected kicks `connect()` directly, all reconnect APIs warn+no-op in externalTransport mode. Use fake timers.
+- [x] **T11 — Docs**: Update the JSDoc on `YuzuClientConfig` and `disconnect()`, and add a short "Reconnection" section to `README.md`.
+- [x] **T12 — Version bump**: `1.1.0` (additive, non-breaking) → `npm publish`.
 
 ---
 

@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![Test Coverage](https://img.shields.io/badge/coverage-84.45%25-yellowgreen.svg)](https://github.com/hypcn/yuzu)
-[![Tests](https://img.shields.io/badge/tests-126%20passing-brightgreen.svg)](https://github.com/hypcn/yuzu)
+[![Tests](https://img.shields.io/badge/tests-170%20passing-brightgreen.svg)](https://github.com/hypcn/yuzu)
 
 UI State Updates -> UISU -> Yuzu
 
@@ -362,6 +362,102 @@ const yuzu = new YuzuServer(INITIAL_UI_STATE, {
   serverConfig: { port: 3000 }
 });
 ```
+
+## Reconnection
+
+When a WebSocket connection is lost, `YuzuClient` automatically attempts to reconnect. The reconnection behaviour is configurable via the `reconnect` option in `YuzuClientConfig`.
+
+### Configuration
+
+```ts
+const client = new YuzuClient(initialState, {
+  address: "ws://localhost:3000/api/yuzu",
+  reconnect: {
+    enabled: true,            // Master switch (default: true)
+    strategy: "exponential",  // "fixed" | "exponential" (default: "fixed")
+    baseDelayMs: 1000,        // Base delay in ms (default: 3000)
+    multiplier: 2,            // Exponential multiplier (default: 2, exponential only)
+    maxDelayMs: 30000,        // Cap on delay in ms (default: 30000, exponential only)
+    jitter: 0.2,              // ±jitter fraction (default: 0.2, 0 disables)
+    maxAttempts: 0,           // Max attempts before giving up (default: 0 = unlimited)
+  },
+});
+```
+
+**Strategies:**
+
+- `"fixed"` — waits `baseDelayMs` between every attempt.
+- `"exponential"` — delay grows as `baseDelayMs * multiplier^(attempt-1)`, capped at `maxDelayMs`.
+
+**Jitter** applies a random `±jitter` fraction to the computed delay to avoid thundering-herd effects when many clients reconnect simultaneously (e.g. after a server restart).
+
+### Runtime Control
+
+Reconnection can be paused and resumed at runtime — useful when the consuming application knows the user is logged out and wants to stop retrying until they log back in:
+
+```ts
+// Pause reconnection (e.g. user logged out)
+client.setAutoReconnect(false);
+
+// ... user logs back in ...
+
+// Resume — kicks an immediate connect if currently disconnected
+client.setAutoReconnect(true);
+```
+
+### Manual Reconnect
+
+Force an immediate reconnection (resets the attempt counter, no delay):
+
+```ts
+client.reconnect();
+```
+
+### Disconnect
+
+Close the connection with explicit control over whether reconnection should follow:
+
+```ts
+// Permanent disconnect (default) — suppresses reconnection until
+// reconnect() or setAutoReconnect(true) is called
+client.disconnect();
+
+// Close but let Yuzu reconnect on its own schedule (with backoff)
+client.disconnect({ reconnect: true });
+```
+
+### Observing Reconnection State
+
+The `reconnectState$` observable emits lifecycle events:
+
+```ts
+import { firstValueFrom } from "rxjs";
+
+client.reconnectState$.subscribe(state => {
+  switch (state.status) {
+    case "connected":    // Connection established, attempt counter reset
+    case "reconnecting": // Retry scheduled, state.attempt = current attempt number
+    case "disconnected": // Paused or disconnected
+    case "gave-up":      // maxAttempts reached; call reconnect() to retry
+  }
+});
+```
+
+### Backward Compatibility
+
+The deprecated `reconnectTimeout` option still works — it sets the base delay with strategy `"fixed"`. Existing code using `reconnectTimeout` is unaffected:
+
+```ts
+// Still works — equivalent to reconnect: { baseDelayMs: 5000 }
+const client = new YuzuClient(initialState, {
+  address: "ws://localhost:3000/api/yuzu",
+  reconnectTimeout: 5000,
+});
+```
+
+### External Transport Mode
+
+In external transport mode, all reconnection APIs (`reconnect()`, `disconnect()`, `setAutoReconnect()`) warn and no-op, since the consuming application owns the transport. `reconnectState$` is seeded with `"disconnected"` and never re-emits.
 
 ## External Transport Mode
 

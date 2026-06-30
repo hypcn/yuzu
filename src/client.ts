@@ -30,6 +30,79 @@ interface StateListener {
 }
 
 /**
+ * Reconnection strategy: fixed delay or exponential backoff.
+ */
+export type ReconnectStrategy = "fixed" | "exponential";
+
+/**
+ * Configuration for the client's automatic reconnection behaviour.
+ */
+export interface ReconnectConfig {
+  /**
+   * Master switch. When false, the client never auto-reconnects after a connection loss.
+   * Can be toggled at runtime via `setAutoReconnect()`.
+   * @default true
+   */
+  enabled?: boolean;
+  /**
+   * Reconnection strategy.
+   * - "fixed" — wait `baseDelayMs` between every attempt.
+   * - "exponential" — delay grows as `baseDelayMs * multiplier^(attempt-1)`, capped at `maxDelayMs`.
+   * @default "fixed"
+   */
+  strategy?: ReconnectStrategy;
+  /**
+   * Base delay in milliseconds. For "exponential", this is the delay for attempt #1.
+   * @default 3000
+   */
+  baseDelayMs?: number;
+  /**
+   * Multiplier applied each exponential step. Only used when strategy is "exponential".
+   * @default 2
+   */
+  multiplier?: number;
+  /**
+   * Cap on delay between attempts in milliseconds. Only used when strategy is "exponential".
+   * @default 30000
+   */
+  maxDelayMs?: number;
+  /**
+   * Random jitter fraction in [0, 1] applied to the computed delay (±fraction).
+   * 0 disables jitter. For example, 0.2 means ±20% of the delay.
+   * @default 0.2
+   */
+  jitter?: number;
+  /**
+   * Maximum consecutive reconnection attempts before giving up.
+   * 0 means unlimited (never give up).
+   * @default 0
+   */
+  maxAttempts?: number;
+}
+
+/**
+ * Status emitted by `reconnectState$`.
+ */
+export type ReconnectStatus
+  = | { status: "connected"; attempt: 0 }
+    | { status: "reconnecting"; attempt: number }
+    | { status: "disconnected"; attempt: number }
+    | { status: "gave-up"; attempt: number };
+
+/**
+ * Options for `disconnect()`.
+ */
+export interface DisconnectOptions {
+  /**
+   * When true, close the socket but let the close handler schedule a normal
+   * (backoff) reconnection. When false (default), suppress reconnection
+   * permanently until `reconnect()` or `setAutoReconnect(true)` is called.
+   * @default false
+   */
+  reconnect?: boolean;
+}
+
+/**
  * Configuration options for the client WebSocket connection.
  */
 export interface YuzuClientConfig {
@@ -40,7 +113,9 @@ export interface YuzuClientConfig {
    */
   address: string,
   /**
-   * Duration in milliseconds to wait before attempting to reconnect after connection loss
+   * Duration in milliseconds to wait before attempting to reconnect after connection loss.
+   * @deprecated use `reconnect.baseDelayMs` instead. When `reconnect` is omitted,
+   * this value overrides the base delay with strategy "fixed".
    * @default 3000
    * Ignored when externalTransport is true.
    */
@@ -69,6 +144,7 @@ export interface YuzuClientConfig {
    * - You must provide an onMessage callback to handle outgoing client messages
    * - Use handleServerMessage() to process incoming messages from the server
    * - Connection state management (connected$, isConnected) is disabled
+   * - All reconnection APIs (reconnect, disconnect, setAutoReconnect) warn and no-op
    *
    * This allows you to use your own transport layer (existing WebSocket, HTTP, WebRTC, etc.)
    * @default false
@@ -98,6 +174,11 @@ export interface YuzuClientConfig {
    * ```
    */
   onMessage?: (message: string) => void;
+  /**
+   * Reconnection behaviour. Omit for defaults (fixed 3s delay, enabled, unlimited).
+   * Ignored when externalTransport is true.
+   */
+  reconnect?: ReconnectConfig;
 }
 
 export class YuzuClient<T extends object> {
@@ -127,9 +208,30 @@ export class YuzuClient<T extends object> {
     reconnectTimeout: SETTINGS.CLIENT_DEFAULT_RECONNECT_TIMEOUT,
   };
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | undefined;
-  private isManualReconnect = false;
   private externalTransport: boolean = false;
   private onMessageCallback?: (message: string) => void;
+
+  /** Resolved reconnection configuration (merged from config + defaults). */
+  private reconnectConfig: Required<ReconnectConfig> = {
+    enabled: true,
+    strategy: SETTINGS.CLIENT_DEFAULT_RECONNECT_STRATEGY,
+    baseDelayMs: SETTINGS.CLIENT_DEFAULT_RECONNECT_BASE_DELAY,
+    multiplier: SETTINGS.CLIENT_DEFAULT_RECONNECT_MULTIPLIER,
+    maxDelayMs: SETTINGS.CLIENT_DEFAULT_RECONNECT_MAX_DELAY,
+    jitter: SETTINGS.CLIENT_DEFAULT_RECONNECT_JITTER,
+    maxAttempts: SETTINGS.CLIENT_DEFAULT_RECONNECT_MAX_ATTEMPTS,
+  };
+  /** Runtime override for auto-reconnect, initialised from config. */
+  private autoReconnectEnabled = true;
+  /** 0 when connected/idle, increments on each scheduled retry, resets on successful open. */
+  private reconnectAttempt = 0;
+  /** Set when maxAttempts is reached; cleared by reconnect(). */
+  private gaveUp = false;
+  /** Transient one-shot: set only inside reconnect() before its deliberate close,
+   *  cleared unconditionally at the top of the close handler. Prevents the close
+   *  triggered by reconnect() from scheduling a second reconnect on top of the
+   *  immediate one. */
+  private _suppressNextCloseSchedule = false;
 
   private _connected = new BehaviorSubject<boolean>(false);
   /**
@@ -142,6 +244,20 @@ export class YuzuClient<T extends object> {
    * Always returns `false` in externalTransport mode.
    */
   get isConnected() { return this._connected.value; }
+
+  private _reconnectState = new BehaviorSubject<ReconnectStatus>({ status: "disconnected", attempt: 0 });
+  /**
+   * Observable emitting the reconnection lifecycle status.
+   * Emits one of:
+   * - `{ status: "connected", attempt: 0 }` on successful open
+   * - `{ status: "reconnecting", attempt: n }` when a retry is scheduled
+   * - `{ status: "disconnected", attempt: n }` when paused or disconnected
+   * - `{ status: "gave-up", attempt: n }` when maxAttempts is reached
+   *
+   * In externalTransport mode, seeded with "disconnected" and never re-emits;
+   * consumers owning the transport should track status themselves.
+   */
+  public reconnectState$ = this._reconnectState.asObservable();
 
   /**
    * Creates a new YuzuClient instance that connects to a Yuzu server.
@@ -174,6 +290,19 @@ export class YuzuClient<T extends object> {
     this.config = Object.assign(this.config, config);
     this.externalTransport = this.config.externalTransport || false;
 
+    // Resolve reconnection configuration from config.reconnect, with a
+    // backward-compat shim: if `reconnect` is omitted but the deprecated
+    // `reconnectTimeout` is supplied, it overrides baseDelayMs (strategy stays "fixed").
+    if (this.config.reconnect) {
+      this.reconnectConfig = {
+        ...this.reconnectConfig,
+        ...this.config.reconnect,
+      } as Required<ReconnectConfig>;
+    } else if (this.config.reconnectTimeout !== undefined) {
+      this.reconnectConfig.baseDelayMs = this.config.reconnectTimeout;
+    }
+    this.autoReconnectEnabled = this.reconnectConfig.enabled;
+
     if (this.externalTransport) {
       // External transport mode
       if (!this.config.onMessage) {
@@ -185,6 +314,32 @@ export class YuzuClient<T extends object> {
       // WebSocket mode
       this.connect();
     }
+  }
+
+  /**
+   * Compute the delay (in ms) before the next reconnection attempt.
+   * Pure function of `reconnectAttempt` and the resolved `reconnectConfig`.
+   * Applies strategy (fixed/exponential), cap, and jitter.
+   * @param attempt - The 1-based attempt number about to be scheduled.
+   * @returns Delay in milliseconds (≥ 0).
+   * @internal
+   */
+  private computeDelay(attempt: number): number {
+    const { strategy, baseDelayMs, multiplier, maxDelayMs, jitter } = this.reconnectConfig;
+    let delay: number;
+    if (strategy === "exponential") {
+      // attempt is 1-based: attempt 1 → base, attempt 2 → base*mult, ...
+      const exp = Math.pow(multiplier, attempt - 1);
+      delay = Math.min(baseDelayMs * exp, maxDelayMs);
+    } else {
+      delay = baseDelayMs;
+    }
+    if (jitter > 0) {
+      // ±jitter fraction, clamped to ≥ 0
+      const factor = 1 + (Math.random() * 2 - 1) * jitter;
+      delay = Math.max(0, delay * factor);
+    }
+    return Math.round(delay);
   }
 
   /**
@@ -202,12 +357,20 @@ export class YuzuClient<T extends object> {
     // Build connection URL with authentication token if provided
     let connectionUrl = this.config.address;
 
-    // Get token from either token or getToken
+    // Get token from either token or getToken.
+    // Wrapped in try/catch so a failing getToken() doesn't silently kill the loop:
+    // we connect anyway without a token and log a warning. A token-less connect that
+    // gets rejected by the server will simply close and re-enter normal backoff.
     let token: string | undefined;
-    if (this.config.getToken) {
-      token = await this.config.getToken();
-    } else if (this.config.token) {
-      token = this.config.token;
+    try {
+      if (this.config.getToken) {
+        token = await this.config.getToken();
+      } else if (this.config.token) {
+        token = this.config.token;
+      }
+    } catch (e) {
+      console.warn("YuzuClient: getToken() failed, connecting without token", e);
+      // token remains undefined; connect proceeds
     }
 
     // Append token as query parameter if present
@@ -220,23 +383,55 @@ export class YuzuClient<T extends object> {
 
     this.ws.addEventListener("open", (ev) => {
       console.log("socket open");
+      // Reset reconnection state on a successful connection
+      this.reconnectAttempt = 0;
+      this.gaveUp = false;
+      this._reconnectState.next({ status: "connected", attempt: 0 });
       this.reload();
       this._connected.next(true);
     });
 
+    const socket = this.ws;
+
     this.ws.addEventListener("close", (ev) => {
       this._connected.next(false);
+      // The socket is closed; clear the reference only if it's still this socket
+      // (reconnect() may have already replaced it with a new one by the time the
+      // close event fires asynchronously).
+      if (this.ws === socket) {
+        this.ws = undefined;
+      }
 
-      // Don't auto-reconnect if this was a manual reconnect
-      if (this.isManualReconnect) {
-        this.isManualReconnect = false;
+      // Suppress the close triggered by reconnect()'s deliberate ws.close()
+      if (this._suppressNextCloseSchedule) {
+        this._suppressNextCloseSchedule = false;
         return;
       }
 
-      console.log(`Socket closed, reconnecting in ${this.config.reconnectTimeout}ms...`);
+      // Permanent disconnect (disconnect() with reconnect:false) or paused via setAutoReconnect(false)
+      if (!this.autoReconnectEnabled) return;
+
+      // Already gave up; do not schedule further retries
+      if (this.gaveUp) return;
+
+      this.reconnectAttempt += 1;
+
+      // Check max attempts (0 = unlimited)
+      const max = this.reconnectConfig.maxAttempts;
+      if (max > 0 && this.reconnectAttempt > max) {
+        this.gaveUp = true;
+        this._reconnectState.next({ status: "gave-up", attempt: this.reconnectAttempt });
+        console.warn(`YuzuClient: gave up after ${this.reconnectAttempt} reconnection attempts`);
+        return;
+      }
+
+      const delay = this.computeDelay(this.reconnectAttempt);
+      console.log(`Socket closed, reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})...`);
+      this._reconnectState.next({ status: "reconnecting", attempt: this.reconnectAttempt });
       this.reconnectTimeoutId = setTimeout(() => {
+        this.reconnectTimeoutId = undefined;
         this.connect();
-      }, this.config.reconnectTimeout);
+      }, delay);
     });
 
     this.ws.addEventListener("error", (ev) => {
@@ -551,7 +746,8 @@ export class YuzuClient<T extends object> {
 
   /**
    * Manually trigger a reconnection to the server.
-   * Closes the current WebSocket connection (if any) and immediately establishes a new one.
+   * Closes the current WebSocket connection (if any) and immediately establishes a new one
+   * with no delay. Resets the reconnection attempt counter and clears any "gave up" state.
    * This is useful when authentication status changes or connection parameters need to be refreshed.
    * Does nothing in externalTransport mode.
    *
@@ -575,9 +771,15 @@ export class YuzuClient<T extends object> {
       this.reconnectTimeoutId = undefined;
     }
 
-    // Close existing connection if present
+    // Reset attempt counter and gave-up state (explicit user action clears these)
+    this.reconnectAttempt = 0;
+    this.gaveUp = false;
+
+    // Close existing connection if present.
+    // Set the transient suppress flag so the close handler doesn't schedule a
+    // second reconnect on top of the immediate connect() below.
     if (this.ws) {
-      this.isManualReconnect = true;
+      this._suppressNextCloseSchedule = true;
       this.ws.close();
       this.ws = undefined;
     }
@@ -587,36 +789,106 @@ export class YuzuClient<T extends object> {
   }
 
   /**
-   * Disconnect from the server and stop automatic reconnection.
-   * This permanently closes the WebSocket connection without attempting to reconnect.
-   * Use this when you want to cleanly shut down the client connection.
+   * Disconnect from the server.
+   *
+   * By default (`reconnect: false` or omitted), this permanently closes the
+   * WebSocket connection and suppresses automatic reconnection until
+   * `reconnect()` or `setAutoReconnect(true)` is called.
+   *
+   * Pass `{ reconnect: true }` to close the socket but let the close handler
+   * schedule a normal (backoff) reconnection. This is distinct from `reconnect()`,
+   * which closes and reconnects immediately with no delay.
+   *
    * Does nothing in externalTransport mode.
+   * @param options - Optional disconnect behaviour.
    * @example
    * ```typescript
-   * // Clean up before unmounting/destroying
+   * // Permanent disconnect (default)
    * client.disconnect();
+   *
+   * // Close but let Yuzu reconnect on its own schedule
+   * client.disconnect({ reconnect: true });
    * ```
    */
-  disconnect() {
+  disconnect(options?: DisconnectOptions) {
     if (this.externalTransport) {
       console.warn("disconnect() does nothing in externalTransport mode");
       return;
     }
 
-    // Clear any pending automatic reconnection
+    const reconnect = options?.reconnect ?? false;
+
+    // Always clear any pending retry — we're about to close, and the close
+    // handler (if reconnect:true) will schedule a fresh one.
     if (this.reconnectTimeoutId !== undefined) {
       clearTimeout(this.reconnectTimeoutId);
       this.reconnectTimeoutId = undefined;
     }
 
-    // Close WebSocket connection if present
-    if (this.ws) {
-      this.isManualReconnect = true; // Prevent auto-reconnect
-      this.ws.close();
-      this.ws = undefined;
+    if (reconnect) {
+      // Let the close handler schedule a normal backoff reconnect.
+      // Do NOT set autoReconnectEnabled = false.
+      if (this.ws) {
+        this.ws.close(); // close handler will schedule
+      } else {
+        // Already disconnected (mid-reconnect window): no close event will fire,
+        // so kick a connect directly to avoid a silent no-op.
+        this.connect();
+      }
+    } else {
+      // Permanent disconnect until reconnect()/setAutoReconnect(true).
+      this.autoReconnectEnabled = false;
+      if (this.ws) {
+        this.ws.close(); // close handler sees autoReconnectEnabled=false → no schedule
+        this.ws = undefined;
+      }
+      this._connected.next(false);
+      this._reconnectState.next({ status: "disconnected", attempt: this.reconnectAttempt });
+    }
+  }
+
+  /**
+   * Enable or disable automatic reconnection at runtime.
+   *
+   * When set to `false`, cancels any pending reconnection timer and prevents
+   * future automatic reconnections until set back to `true`. Does **not** close
+   * the current socket — use `disconnect()` for that.
+   *
+   * When set to `true` while disconnected (and not in a "gave up" state), kicks
+   * a `connect()` immediately rather than waiting for a close event that won't come.
+   *
+   * Note: if the client has given up (maxAttempts reached), setting this to `true`
+   * does **not** resume — call `reconnect()` to clear the gave-up state and retry.
+   *
+   * Does nothing in externalTransport mode.
+   * @param enabled - Whether automatic reconnection should be enabled.
+   * @example
+   * ```typescript
+   * // Pause reconnection while user is logged out
+   * client.setAutoReconnect(false);
+   * await userLogsOut();
+   * // Resume once logged back in
+   * client.setAutoReconnect(true);
+   * ```
+   */
+  setAutoReconnect(enabled: boolean) {
+    if (this.externalTransport) {
+      console.warn("setAutoReconnect() does nothing in externalTransport mode");
+      return;
     }
 
-    this._connected.next(false);
+    this.autoReconnectEnabled = enabled;
+
+    if (!enabled && this.reconnectTimeoutId !== undefined) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = undefined;
+      this._reconnectState.next({ status: "disconnected", attempt: this.reconnectAttempt });
+    }
+
+    if (enabled && !this.isConnected && !this.gaveUp && this.ws === undefined) {
+      // Resume: connect now rather than waiting for a close that won't come
+      this.connect();
+    }
   }
 
   /**

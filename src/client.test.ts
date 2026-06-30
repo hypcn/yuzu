@@ -970,4 +970,514 @@ it("should receive patch updates from server", async () => {
       expect(client.state.user.profile.bio).toBe("Engineer");
     });
   });
+
+  // ===========================================================================
+  // Reconnection tests (T10)
+  //
+  // These tests use fake timers and a mock WebSocket class to deterministically
+  // test the reconnection logic (delays, backoff, maxAttempts, pause/resume)
+  // without relying on real network behaviour.
+  // ===========================================================================
+
+  describe("reconnection logic", () => {
+    let originalWebSocket: typeof WebSocket;
+    let mockSockets: MockWebSocket[];
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      originalWebSocket = global.WebSocket;
+      MockWebSocket.instances = [];
+      mockSockets = MockWebSocket.instances;
+      global.WebSocket = MockWebSocket as any;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      global.WebSocket = originalWebSocket;
+    });
+
+    it("should use fixed delay by default", async () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { strategy: "fixed", baseDelayMs: 5000, jitter: 0 } },
+      );
+
+      // The constructor calls connect(); the first socket is mockSockets[0]
+      expect(mockSockets).toHaveLength(1);
+
+      // Simulate a close → should schedule a reconnect after 5000ms
+      mockSockets[0].simulateClose();
+      const states = observeReconnectStates(client);
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 1 });
+
+      // Before the delay, no new socket
+      vi.advanceTimersByTime(4999);
+      expect(mockSockets).toHaveLength(1);
+
+      // After the delay, connect() is called → new socket
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(2);
+    });
+
+    it("should use exponential backoff", async () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        {
+          address: "ws://localhost:9999/test",
+          reconnect: {
+            strategy: "exponential",
+            baseDelayMs: 1000,
+            multiplier: 2,
+            maxDelayMs: 10000,
+            jitter: 0,
+          },
+        },
+      );
+
+      // Attempt 1: delay = 1000 * 2^0 = 1000
+      mockSockets[0].simulateClose();
+      vi.advanceTimersByTime(1000);
+      expect(mockSockets).toHaveLength(2);
+
+      // Attempt 2: delay = 1000 * 2^1 = 2000
+      mockSockets[1].simulateClose();
+      vi.advanceTimersByTime(1999);
+      expect(mockSockets).toHaveLength(2);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(3);
+
+      // Attempt 3: delay = 1000 * 2^2 = 4000
+      mockSockets[2].simulateClose();
+      vi.advanceTimersByTime(3999);
+      expect(mockSockets).toHaveLength(3);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(4);
+
+      // Attempt 4: delay = 1000 * 2^3 = 8000
+      mockSockets[3].simulateClose();
+      vi.advanceTimersByTime(7999);
+      expect(mockSockets).toHaveLength(4);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(5);
+
+      // Attempt 5: delay = 1000 * 2^4 = 16000, capped at 10000
+      mockSockets[4].simulateClose();
+      vi.advanceTimersByTime(9999);
+      expect(mockSockets).toHaveLength(5);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(6);
+    });
+
+    it("should apply jitter within bounds", () => {
+      // Use a fixed seed for Math.random to test jitter deterministically
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5); // → factor = 1 + 0 * jitter = 1 (midpoint)
+
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0.2 } },
+      );
+
+      mockSockets[0].simulateClose();
+      // With random=0.5, factor = 1 + (0.5*2-1)*0.2 = 1 + 0 = 1, so delay = 1000
+      vi.advanceTimersByTime(1000);
+      expect(mockSockets).toHaveLength(2);
+
+      randomSpy.mockRestore();
+    });
+
+    it("should apply jitter at upper bound", () => {
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1); // → factor = 1 + 1*0.2 = 1.2
+
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0.2 } },
+      );
+
+      mockSockets[0].simulateClose();
+      // delay = 1000 * 1.2 = 1200
+      vi.advanceTimersByTime(1199);
+      expect(mockSockets).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(2);
+
+      randomSpy.mockRestore();
+    });
+
+    it("should apply jitter at lower bound (clamped to ≥ 0)", () => {
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0); // → factor = 1 + (-1)*0.2 = 0.8
+
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0.2 } },
+      );
+
+      mockSockets[0].simulateClose();
+      // delay = 1000 * 0.8 = 800
+      vi.advanceTimersByTime(799);
+      expect(mockSockets).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(2);
+
+      randomSpy.mockRestore();
+    });
+
+    it("should give up after maxAttempts", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0, maxAttempts: 3 } },
+      );
+
+      const states = observeReconnectStates(client);
+
+      // Attempt 1
+      mockSockets[0].simulateClose();
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 1 });
+      vi.advanceTimersByTime(1000);
+      expect(mockSockets).toHaveLength(2);
+
+      // Attempt 2
+      mockSockets[1].simulateClose();
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 2 });
+      vi.advanceTimersByTime(1000);
+      expect(mockSockets).toHaveLength(3);
+
+      // Attempt 3
+      mockSockets[2].simulateClose();
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 3 });
+      vi.advanceTimersByTime(1000);
+      expect(mockSockets).toHaveLength(4);
+
+      // Attempt 4 — exceeds maxAttempts (3), should give up
+      mockSockets[3].simulateClose();
+      expect(states.last()).toEqual({ status: "gave-up", attempt: 4 });
+      expect(mockSockets).toHaveLength(4); // no new socket
+
+      // Advancing time should not create more sockets
+      vi.advanceTimersByTime(10000);
+      expect(mockSockets).toHaveLength(4);
+    });
+
+    it("setAutoReconnect(false) cancels pending retry", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 5000, jitter: 0 } },
+      );
+
+      const states = observeReconnectStates(client);
+
+      mockSockets[0].simulateClose();
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 1 });
+
+      // Pause before the retry fires
+      client.setAutoReconnect(false);
+      expect(states.last()).toEqual({ status: "disconnected", attempt: 1 });
+
+      // Advance past the delay — no new socket should be created
+      vi.advanceTimersByTime(10000);
+      expect(mockSockets).toHaveLength(1);
+    });
+
+    it("setAutoReconnect(true) resumes while disconnected", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 5000, jitter: 0 } },
+      );
+
+      client.setAutoReconnect(false);
+      mockSockets[0].simulateClose();
+
+      // No reconnect scheduled because autoReconnect is off
+      vi.advanceTimersByTime(10000);
+      expect(mockSockets).toHaveLength(1);
+
+      // Resume — should kick connect() immediately
+      client.setAutoReconnect(true);
+      expect(mockSockets).toHaveLength(2);
+    });
+
+    it("setAutoReconnect(true) does NOT resume after gave up", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0, maxAttempts: 1 } },
+      );
+
+      const states = observeReconnectStates(client);
+
+      // Attempt 1
+      mockSockets[0].simulateClose();
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 1 });
+      vi.advanceTimersByTime(1000);
+      expect(mockSockets).toHaveLength(2);
+
+      // Attempt 2 — exceeds maxAttempts (1), gives up
+      mockSockets[1].simulateClose();
+      expect(states.last()).toEqual({ status: "gave-up", attempt: 2 });
+
+      // Resuming via setAutoReconnect should NOT kick a connect (gaveUp is true)
+      client.setAutoReconnect(true);
+      vi.advanceTimersByTime(10000);
+      expect(mockSockets).toHaveLength(2);
+      expect(states.last()).toEqual({ status: "gave-up", attempt: 2 });
+    });
+
+    it("reconnect() resets attempt counter and clears gave-up state", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0, maxAttempts: 1 } },
+      );
+
+      const states = observeReconnectStates(client);
+
+      // Burn through to gave-up
+      mockSockets[0].simulateClose();
+      vi.advanceTimersByTime(1000);
+      mockSockets[1].simulateClose();
+      expect(states.last()).toEqual({ status: "gave-up", attempt: 2 });
+
+      // reconnect() should clear gaveUp and connect immediately
+      client.reconnect();
+      expect(mockSockets).toHaveLength(3);
+
+      // The new socket's close should schedule normally (attempt 1 again)
+      mockSockets[2].simulateClose();
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 1 });
+    });
+
+    it("reconnect() does not double-schedule via the close handler", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 5000, jitter: 0 } },
+      );
+
+      // Wait for initial connect, open it
+      mockSockets[0].simulateOpen();
+
+      // Call reconnect() — should close the old socket and open a new one immediately
+      client.reconnect();
+      expect(mockSockets).toHaveLength(2);
+
+      // Advance a small amount — no additional sockets should be created
+      // (the close from reconnect()'s ws.close() must not schedule a retry)
+      vi.advanceTimersByTime(100);
+      expect(mockSockets).toHaveLength(2);
+
+      // Advance past the reconnect delay — still no extra socket
+      vi.advanceTimersByTime(10000);
+      expect(mockSockets).toHaveLength(2);
+    });
+
+    it("disconnect({ reconnect: false }) (default) suppresses reconnection", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 1000, jitter: 0 } },
+      );
+
+      const states = observeReconnectStates(client);
+
+      client.disconnect();
+
+      // No new socket should be created even after the delay
+      vi.advanceTimersByTime(10000);
+      expect(mockSockets).toHaveLength(1);
+      expect(states.last()).toEqual({ status: "disconnected", attempt: 0 });
+    });
+
+    it("disconnect({ reconnect: true }) schedules a normal backoff reconnect", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 2000, jitter: 0 } },
+      );
+
+      const states = observeReconnectStates(client);
+
+      client.disconnect({ reconnect: true });
+
+      // The close should schedule a reconnect after 2000ms
+      expect(states.last()).toEqual({ status: "reconnecting", attempt: 1 });
+      vi.advanceTimersByTime(1999);
+      expect(mockSockets).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(2);
+    });
+
+    it("disconnect({ reconnect: true }) while already disconnected kicks connect() directly", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnect: { baseDelayMs: 5000, jitter: 0 } },
+      );
+
+      // Socket is closed but a retry is pending (mid-reconnect window)
+      mockSockets[0].simulateClose();
+      expect(mockSockets).toHaveLength(1);
+
+      // disconnect({ reconnect: true }) while ws is undefined and timer pending
+      client.disconnect({ reconnect: true });
+
+      // Should have kicked connect() directly → new socket
+      expect(mockSockets).toHaveLength(2);
+    });
+
+    it("getToken() rejection connects without token and logs warning", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const getToken = vi.fn().mockRejectedValue(new Error("token service down"));
+
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", getToken },
+      );
+
+      // connect() is async — flush microtasks
+      await vi.runAllTimersAsync();
+
+      // Should have connected anyway (new socket created)
+      expect(mockSockets.length).toBeGreaterThanOrEqual(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "YuzuClient: getToken() failed, connecting without token",
+        expect.any(Error),
+      );
+
+      // The connection URL should not contain a token query param
+      expect(mockSockets[0].url).not.toContain("token=");
+
+      warnSpy.mockRestore();
+    });
+
+    it("all reconnect APIs warn and no-op in externalTransport mode", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const client = new YuzuClient(
+        { count: 0 },
+        { externalTransport: true, onMessage: vi.fn() },
+      );
+
+      client.reconnect();
+      client.disconnect();
+      client.disconnect({ reconnect: true });
+      client.setAutoReconnect(false);
+      client.setAutoReconnect(true);
+
+      expect(warnSpy).toHaveBeenCalledWith("reconnect() does nothing in externalTransport mode");
+      expect(warnSpy).toHaveBeenCalledWith("disconnect() does nothing in externalTransport mode");
+      expect(warnSpy).toHaveBeenCalledWith("setAutoReconnect() does nothing in externalTransport mode");
+
+      // No sockets should have been created (external transport mode)
+      expect(mockSockets).toHaveLength(0);
+
+      warnSpy.mockRestore();
+    });
+
+    it("reconnectState$ is seeded with disconnected", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test" },
+      );
+
+      const states: any[] = [];
+      client.reconnectState$.subscribe(s => states.push(s));
+
+      // BehaviorSubject seeds immediately
+      expect(states).toHaveLength(1);
+      expect(states[0]).toEqual({ status: "disconnected", attempt: 0 });
+    });
+
+    it("emits connected on successful open", () => {
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test" },
+      );
+
+      const states = observeReconnectStates(client);
+
+      mockSockets[0].simulateOpen();
+      expect(states.last()).toEqual({ status: "connected", attempt: 0 });
+    });
+
+    it("supports deprecated reconnectTimeout as baseDelayMs (backward compat)", () => {
+      // Fix Math.random so jitter (default 0.2) doesn't make the delay nondeterministic.
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5); // factor = 1 → delay = base
+
+      const client = new YuzuClient(
+        { count: 0 },
+        { address: "ws://localhost:9999/test", reconnectTimeout: 7000 },
+      );
+
+      mockSockets[0].simulateClose();
+      // Should wait 7000ms (from reconnectTimeout, strategy fixed, jitter neutralised)
+      vi.advanceTimersByTime(6999);
+      expect(mockSockets).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(mockSockets).toHaveLength(2);
+
+      randomSpy.mockRestore();
+    });
+  });
 });
+
+// =============================================================================
+// Test helpers
+// =============================================================================
+
+/**
+ * Minimal mock WebSocket that records instances and lets tests simulate
+ * open/close/error/message events deterministically.
+ */
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+
+  url: string;
+  readyState: number = 0; // CONNECTING
+  private listeners: { [type: string]: EventListener[] } = {};
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: EventListener) {
+    if (!this.listeners[type]) this.listeners[type] = [];
+    this.listeners[type].push(listener);
+  }
+
+  removeEventListener(type: string, listener: EventListener) {
+    if (!this.listeners[type]) return;
+    this.listeners[type] = this.listeners[type].filter(l => l !== listener);
+  }
+
+  close() {
+    this.readyState = 3; // CLOSED
+    this.dispatchEvent("close");
+  }
+
+  send() {}
+
+  /** Test helper: simulate a successful open event. */
+  simulateOpen() {
+    this.readyState = 1; // OPEN
+    this.dispatchEvent("open");
+  }
+
+  /** Test helper: simulate a close event. */
+  simulateClose() {
+    this.readyState = 3; // CLOSED
+    this.dispatchEvent("close");
+  }
+
+  private dispatchEvent(type: string) {
+    const ls = this.listeners[type] || [];
+    for (const l of ls) {
+      (l as any).call(this, { type });
+    }
+  }
+}
+
+/**
+ * Helper to collect reconnectState$ emissions into an array with a `.last()`.
+ */
+function observeReconnectStates(client: YuzuClient<any>) {
+  const states: any[] = [];
+  client.reconnectState$.subscribe(s => states.push(s));
+  return {
+    states,
+    last: () => states[states.length - 1],
+  };
+}

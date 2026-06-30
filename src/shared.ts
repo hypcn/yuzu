@@ -15,6 +15,18 @@ export const YUZU_SETTINGS = {
   CLIENT_DEFAULT_TARGET_ADDRESS: "ws://localhost:3000/api/yuzu",
   /** Default timeout in milliseconds before attempting reconnection */
   CLIENT_DEFAULT_RECONNECT_TIMEOUT: 3_000,
+  /** Default reconnection strategy: "fixed" or "exponential" */
+  CLIENT_DEFAULT_RECONNECT_STRATEGY: "fixed" as "fixed" | "exponential",
+  /** Default base delay in ms for reconnection (attempt #1 for exponential) */
+  CLIENT_DEFAULT_RECONNECT_BASE_DELAY: 3_000,
+  /** Default multiplier for exponential backoff */
+  CLIENT_DEFAULT_RECONNECT_MULTIPLIER: 2,
+  /** Default cap on delay between reconnection attempts in ms */
+  CLIENT_DEFAULT_RECONNECT_MAX_DELAY: 30_000,
+  /** Default jitter fraction in [0,1] applied to reconnection delay (±fraction) */
+  CLIENT_DEFAULT_RECONNECT_JITTER: 0.2,
+  /** Default max reconnection attempts before giving up (0 = unlimited) */
+  CLIENT_DEFAULT_RECONNECT_MAX_ATTEMPTS: 0,
   /** Enable client-side logging of state reads */
   CLIENT_LOG_READ: false,
   /** Enable detailed client-side logging of full state reads */
