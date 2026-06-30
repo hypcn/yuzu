@@ -108,6 +108,7 @@ disconnect(options?: { reconnect?: boolean }): void
 - `private autoReconnectEnabled: boolean` — runtime override, initialised from config.
 - `private reconnectAttempt: number` — 0 when connected/idle, increments on each scheduled retry, resets to 0 on successful `open`.
 - `private gaveUp: boolean` — set when `maxAttempts` is reached; cleared by `reconnect()`.
+- `private _suppressNextCloseSchedule: boolean` — transient one-shot, set only inside `reconnect()` before its deliberate `ws.close()`, cleared unconditionally at the top of the close handler. Prevents the close triggered by `reconnect()` from scheduling a second reconnect on top of the immediate one. (This is the *only* remaining one-shot flag; the old `isManualReconnect` is removed.)
 - `private computeDelay(): number` — pure function of `reconnectAttempt` + config (strategy, base, multiplier, max, jitter).
 
 ### Retry scheduling logic (replaces the current `setTimeout` block)
@@ -115,6 +116,9 @@ disconnect(options?: { reconnect?: boolean }): void
 ```
 on close:
   _connected.next(false)
+  if _suppressNextCloseSchedule:                         // set by reconnect()'s deliberate close
+    _suppressNextCloseSchedule = false
+    return
   if !autoReconnectEnabled: return                       // covers disconnect() & setAutoReconnect(false)
   if gaveUp: return
   reconnectAttempt += 1
@@ -127,7 +131,7 @@ on close:
   reconnectTimeoutId = setTimeout(() => connect(), delay)
 ```
 
-Note: `isManualReconnect` is removed entirely. The `disconnect({ reconnect: false })` path sets `autoReconnectEnabled = false`, which the close handler checks — no one-shot flag needed.
+Note: `isManualReconnect` is removed entirely. The `disconnect({ reconnect: false })` path sets `autoReconnectEnabled = false`, which the close handler checks — no one-shot flag needed for that case. The only remaining one-shot is `_suppressNextCloseSchedule`, used exclusively by `reconnect()` (see Internal state additions).
 
 `computeDelay`:
 - `fixed`: `baseDelayMs` (± jitter)
@@ -157,9 +161,63 @@ gaveUp = false
 reconnectState$.next({ status: "connected", attempt: 0 })
 ```
 
-### `setAutoReconnect(enabled)`
+### `reconnect()`
+
+```typescript
+reconnect(): void
+```
 
 ```
+if (externalTransport):
+  console.warn("reconnect() does nothing in externalTransport mode")
+  return
+
+// Clear any pending automatic reconnection
+if (reconnectTimeoutId !== undefined):
+  clearTimeout(reconnectTimeoutId); reconnectTimeoutId = undefined
+
+// Reset attempt counter and gave-up state (Q3: explicit user action clears these)
+reconnectAttempt = 0
+gaveUp = false
+
+// Close existing connection if present.
+// IMPORTANT: closing fires the close handler, which (if autoReconnectEnabled
+// is still true) would schedule ANOTHER reconnect on top of our immediate one.
+// To avoid the double-schedule, set a transient guard before closing:
+if (this.ws):
+  this._suppressNextCloseSchedule = true   // transient, cleared in the close handler
+  this.ws.close()
+  this.ws = undefined
+
+this._connected.next(false)
+this.connect()                              // immediate, no delay
+```
+
+The `_suppressNextCloseSchedule` flag is a **transient** one-shot (distinct from the removed `isManualReconnect`): it is only ever set inside `reconnect()` immediately before a deliberate close, and is unconditionally cleared at the top of the close handler. This is the one place we still need a one-shot, because `autoReconnectEnabled` must remain `true` for *future* closes — we only want to suppress the close triggered by our own `ws.close()` here.
+
+The close handler becomes:
+
+```
+on close:
+  _connected.next(false)
+  if (_suppressNextCloseSchedule):
+    _suppressNextCloseSchedule = false
+    return
+  if !autoReconnectEnabled: return
+  ... (rest unchanged)
+```
+
+### `setAutoReconnect(enabled)`
+
+```typescript
+setAutoReconnect(enabled: boolean): void
+```
+
+```
+if (externalTransport):
+  console.warn("setAutoReconnect() does nothing in externalTransport mode")
+  return
+
 autoReconnectEnabled = enabled
 if (!enabled && reconnectTimeoutId !== undefined):
   clearTimeout(reconnectTimeoutId); reconnectTimeoutId = undefined
@@ -169,9 +227,19 @@ if (enabled && !isConnected && !gaveUp && ws === undefined):
   connect()
 ```
 
+**Note on `gaveUp`:** if the client has given up (`gaveUp === true`), calling `setAutoReconnect(true)` does **not** resume — the resume condition explicitly checks `!gaveUp`. To retry after a give-up, the app must call `reconnect()`, which clears `gaveUp` and resets the attempt counter. This is intentional: a give-up is a terminal state that requires an explicit user action to escape, not a flag toggle.
+
 ### `disconnect(options?: { reconnect?: boolean })`
 
+```typescript
+disconnect(options?: { reconnect?: boolean }): void
 ```
+
+```
+if (externalTransport):
+  console.warn("disconnect() does nothing in externalTransport mode")
+  return
+
 const reconnect = options?.reconnect ?? false
 
 // Always clear any pending retry — we're about to close, and the close
@@ -206,7 +274,28 @@ Note: with `reconnect: false`, we no longer need the `isManualReconnect` flag �
 
 - If `reconnect` is omitted, behaviour matches today: fixed 3 s, enabled, unlimited.
 - If only `reconnectTimeout` is supplied, it overrides `baseDelayMs` and strategy stays `"fixed"`.
-- `reconnect()` and `disconnect()` keep their current signatures and semantics; `disconnect()` now also flips `autoReconnectEnabled = false` (previously it relied on `isManualReconnect` for the one close event — now it's explicit and survives any future close).
+- `reconnect()` keeps its current signature (no args) and gains the attempt-counter reset + immediate connect behaviour — additive.
+- `disconnect()` gains an optional `options` object. Since the arg is optional and `reconnect` defaults to `false` (matching today's permanent-disconnect behaviour), existing callers are unaffected.
+- `connected$` and `isConnected` are unchanged; `reconnectState$` is a new, additive observable.
+
+### `externalTransport` mode
+
+All reconnect-related APIs warn and no-op in external transport mode, matching the existing guards on `reconnect()`/`disconnect()`:
+
+- `setAutoReconnect()` → `console.warn`, return.
+- `reconnect()` → already warns and returns (unchanged).
+- `disconnect()` → already warns and returns (unchanged).
+- `reconnectState$` → seeded with `{ status: "disconnected", attempt: 0 }` and never emits again (the client never owns a transport in this mode). Consumers in external transport mode should not rely on `reconnectState$` for connection status — they own the transport and should track status themselves.
+
+### `reconnectState$` seeding
+
+`reconnectState$` is backed by a `BehaviorSubject` (like `connected$`), seeded with:
+
+```typescript
+{ status: "disconnected", attempt: 0 }
+```
+
+so subscribers receive an initial value immediately on subscribe.
 
 ---
 
@@ -214,14 +303,14 @@ Note: with `reconnect: false`, we no longer need the `isManualReconnect` flag �
 
 - [ ] **T1 — Config types**: Add `ReconnectConfig` to `YuzuClientConfig` in `src/client.ts`; mark `reconnectTimeout` `@deprecated`.
 - [ ] **T2 — Defaults**: Add `CLIENT_DEFAULT_RECONNECT_*` constants to `YUZU_SETTINGS` in `src/shared.ts` (base delay, multiplier, max delay, jitter, max attempts).
-- [ ] **T3 — Internal state**: Add `autoReconnectEnabled`, `reconnectAttempt`, `gaveUp`, and the `reconnectState$` subject/observable to `YuzuClient`.
+- [ ] **T3 — Internal state**: Add `autoReconnectEnabled`, `reconnectAttempt`, `gaveUp`, `_suppressNextCloseSchedule`, and the `reconnectState$` subject/observable (seeded `{ status: "disconnected", attempt: 0 }`) to `YuzuClient`.
 - [ ] **T4 — `computeDelay()`**: Implement the pure delay function with strategy + jitter.
 - [ ] **T5 — `connect()` hardening**: Wrap `getToken()` in try/catch; reset `reconnectAttempt`/`gaveUp` and emit `connected` on `open`.
-- [ ] **T6 — `close` handler rewrite**: Replace the `setTimeout` block with the retry-scheduling logic above (attempt counter, maxAttempts, gave-up emission).
-- [ ] **T7 — `setAutoReconnect()`**: New public method; cancel pending timer when pausing, kick a `connect()` when resuming while disconnected.
-- [ ] **T8 — `reconnect()`/`disconnect()` update**: `reconnect()` resets attempt counter and connects immediately. `disconnect()` takes `options?: { reconnect?: boolean }`; `reconnect:false` (default) sets `autoReconnectEnabled = false`; `reconnect:true` lets the close handler schedule. Remove the `isManualReconnect` flag entirely.
+- [ ] **T6 — `close` handler rewrite**: Replace the `setTimeout` block with the retry-scheduling logic above (check `_suppressNextCloseSchedule` first, then `autoReconnectEnabled`, attempt counter, maxAttempts, gave-up emission).
+- [ ] **T7 — `setAutoReconnect()`**: New public method; warn+no-op in externalTransport mode; cancel pending timer when pausing, kick a `connect()` when resuming while disconnected (and `!gaveUp`).
+- [ ] **T8 — `reconnect()`/`disconnect()` update**: `reconnect()` resets attempt counter, sets `_suppressNextCloseSchedule`, closes existing socket, connects immediately. `disconnect()` takes `options?: { reconnect?: boolean }`; warn+no-op in externalTransport mode; `reconnect:false` (default) sets `autoReconnectEnabled = false`; `reconnect:true` lets the close handler schedule. Remove the `isManualReconnect` flag entirely.
 - [ ] **T9 — Backward-compat shim**: In the constructor, merge `reconnectTimeout` into `reconnect.baseDelayMs` if `reconnect` is absent.
-- [ ] **T10 — Tests**: Add `client.test.ts` cases for: fixed vs exponential delay values, jitter bounds, maxAttempts → gave-up, `setAutoReconnect(false)` cancels pending retry, `setAutoReconnect(true)` resumes, `getToken()` rejection connects without token + logs warning, `reconnect()` resets counter, `disconnect({ reconnect: true })` schedules a reconnect, `disconnect({ reconnect: false })` (default) suppresses it, `disconnect({ reconnect: true })` while already disconnected kicks `connect()` directly. Use fake timers.
+- [ ] **T10 — Tests**: Add `client.test.ts` cases for: fixed vs exponential delay values, jitter bounds, maxAttempts → gave-up, `setAutoReconnect(false)` cancels pending retry, `setAutoReconnect(true)` resumes (but not after `gaveUp`), `getToken()` rejection connects without token + logs warning, `reconnect()` resets counter and doesn't double-schedule, `disconnect({ reconnect: true })` schedules a reconnect, `disconnect({ reconnect: false })` (default) suppresses it, `disconnect({ reconnect: true })` while already disconnected kicks `connect()` directly, all reconnect APIs warn+no-op in externalTransport mode. Use fake timers.
 - [ ] **T11 — Docs**: Update the JSDoc on `YuzuClientConfig` and `disconnect()`, and add a short "Reconnection" section to `README.md`.
 - [ ] **T12 — Version bump**: `1.1.0` (additive, non-breaking) → `npm publish`.
 
