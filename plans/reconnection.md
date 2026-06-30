@@ -78,9 +78,30 @@ export interface YuzuClientConfig {
 | Method | Purpose |
 |---|---|
 | `setAutoReconnect(enabled: boolean)` | Pause/resume auto-reconnect at runtime. When set to `false`, cancels any pending retry and prevents future auto-reconnects until set back to `true`. Does **not** close the current socket. |
-| `reconnect()` | Unchanged signature, but now: cancels pending timer, resets attempt counter, connects immediately. Respects `autoReconnectEnabled` for *subsequent* closes but always performs this one connect. |
-| `disconnect()` | Unchanged: cancels timer, closes socket, sets `autoReconnectEnabled = false` for this session (so the close handler won't reschedule). |
-| New observable `reconnectState$` | Emits `{ status: "connected" | "reconnecting" | "disconnected" | "gave-up", attempt: number }` so the app can show UI ("Reconnecting in 4s…", "Connection lost — please log in"). |
+| `reconnect()` | Unchanged signature, but now: cancels pending timer, resets attempt counter, connects immediately (no delay). Always performs this one connect regardless of `autoReconnectEnabled`; subsequent closes respect the flag. |
+| `disconnect(options?: { reconnect?: boolean })` | Closes the socket. `reconnect` defaults to `false`. See semantics table below. |
+| New observable `reconnectState$` | Separate from `connected$`. Emits `{ status: "connected" | "reconnecting" | "disconnected" | "gave-up", attempt: number }` so the app can show UI ("Reconnecting in 4s…", "Connection lost — please log in"). |
+
+#### `disconnect()` semantics
+
+`disconnect` now takes an explicit options object so the post-close behaviour is declared at the call site rather than implied by prior state:
+
+```typescript
+disconnect(options?: { reconnect?: boolean }): void
+```
+
+- `disconnect()` / `disconnect({ reconnect: false })` (default) — close socket, suppress this close's auto-reconnect, and set `autoReconnectEnabled = false`. Permanent until `reconnect()` or `setAutoReconnect(true)` is called. This replaces the old `isManualReconnect` one-shot trick with an explicit, durable flag.
+- `disconnect({ reconnect: true })` — close socket, but let the `close` handler schedule a normal reconnect (with backoff). Useful for "I want to drop this connection and let Yuzu reconnect on its own schedule."
+
+**Edge case — called while already disconnected (socket `undefined`, timer pending):** there is no socket to close and therefore no `close` event to drive the schedule. Handle by clearing the pending timer and calling `connect()` directly, so the call is never a silent no-op. (Only relevant when `reconnect: true`; with `reconnect: false` we just clear the timer and stay disconnected.)
+
+#### Three-way comparison of close-and-maybe-reconnect methods
+
+| Method | Closes socket? | Reconnects? | Delay before reconnect | Resets attempt counter? | Sets `autoReconnectEnabled`? |
+|---|---|---|---|---|---|
+| `disconnect()` | yes | no | — | no | → `false` |
+| `disconnect({ reconnect: true })` | yes | yes (scheduled) | normal backoff | no | unchanged |
+| `reconnect()` | yes | yes (immediate) | none | yes | unchanged (but always connects this once) |
 
 ### Internal state additions
 
@@ -94,8 +115,7 @@ export interface YuzuClientConfig {
 ```
 on close:
   _connected.next(false)
-  if isManualReconnect: isManualReconnect = false; return
-  if !autoReconnectEnabled: return
+  if !autoReconnectEnabled: return                       // covers disconnect() & setAutoReconnect(false)
   if gaveUp: return
   reconnectAttempt += 1
   if maxAttempts > 0 && reconnectAttempt > maxAttempts:
@@ -107,6 +127,8 @@ on close:
   reconnectTimeoutId = setTimeout(() => connect(), delay)
 ```
 
+Note: `isManualReconnect` is removed entirely. The `disconnect({ reconnect: false })` path sets `autoReconnectEnabled = false`, which the close handler checks — no one-shot flag needed.
+
 `computeDelay`:
 - `fixed`: `baseDelayMs` (± jitter)
 - `exponential`: `min(baseDelayMs * multiplier^(attempt-1), maxDelayMs)` (± jitter)
@@ -114,18 +136,17 @@ on close:
 
 ### `connect()` hardening
 
-Wrap the token acquisition in try/catch so a failing `getToken()` doesn't silently kill the loop:
+Wrap the token acquisition in try/catch so a failing `getToken()` doesn't silently kill the loop. **Decision (Q1): connect anyway without a token**, and log a warning. Rationale: the consuming app may have a fallback auth path, and a token-less connect that gets rejected by the server will simply close and re-enter the normal backoff loop — no worse than refusing to connect, and simpler than special-casing a retry.
 
 ```
+let token: string | undefined
 try {
   token = config.getToken ? await config.getToken() : config.token
 } catch (e) {
-  console.error("YuzuClient: getToken() failed, reconnecting without token", e)
-  // fall through with token undefined, or schedule a retry
+  console.warn("YuzuClient: getToken() failed, connecting without token", e)
+  // token remains undefined; connect proceeds
 }
 ```
-
-Decision to make (see Open Questions): on `getToken()` failure, do we (a) connect without a token, or (b) schedule a retry? Lean toward (b) with a warning, since connecting without a token will likely just get rejected and close again — but (a) is simpler.
 
 ### `open` handler
 
@@ -148,6 +169,39 @@ if (enabled && !isConnected && !gaveUp && ws === undefined):
   connect()
 ```
 
+### `disconnect(options?: { reconnect?: boolean })`
+
+```
+const reconnect = options?.reconnect ?? false
+
+// Always clear any pending retry — we're about to close, and the close
+// handler (if reconnect:true) will schedule a fresh one.
+if (reconnectTimeoutId !== undefined):
+  clearTimeout(reconnectTimeoutId); reconnectTimeoutId = undefined
+
+if (reconnect) {
+  // Let the close handler schedule a normal backoff reconnect.
+  // Do NOT set autoReconnectEnabled = false.
+  if (this.ws) {
+    this.ws.close()           // close handler will schedule
+  } else {
+    // Already disconnected (mid-reconnect window): no close event will fire,
+    // so kick a connect directly to avoid a silent no-op.
+    this.connect()
+  }
+} else {
+  // Permanent disconnect until reconnect()/setAutoReconnect(true).
+  this.autoReconnectEnabled = false
+  if (this.ws) {
+    this.ws.close()           // close handler sees autoReconnectEnabled=false → no schedule
+  }
+  this._connected.next(false)
+  this.reconnectState$.next({ status: "disconnected", attempt: this.reconnectAttempt })
+}
+```
+
+Note: with `reconnect: false`, we no longer need the `isManualReconnect` flag — `autoReconnectEnabled = false` is checked in the close handler and is durable. The one-shot `isManualReconnect` flag is removed entirely.
+
 ### Backward compatibility
 
 - If `reconnect` is omitted, behaviour matches today: fixed 3 s, enabled, unlimited.
@@ -165,21 +219,27 @@ if (enabled && !isConnected && !gaveUp && ws === undefined):
 - [ ] **T5 — `connect()` hardening**: Wrap `getToken()` in try/catch; reset `reconnectAttempt`/`gaveUp` and emit `connected` on `open`.
 - [ ] **T6 — `close` handler rewrite**: Replace the `setTimeout` block with the retry-scheduling logic above (attempt counter, maxAttempts, gave-up emission).
 - [ ] **T7 — `setAutoReconnect()`**: New public method; cancel pending timer when pausing, kick a `connect()` when resuming while disconnected.
-- [ ] **T8 — `reconnect()`/`disconnect()` update**: Reset attempt counter; `disconnect()` sets `autoReconnectEnabled = false`.
+- [ ] **T8 — `reconnect()`/`disconnect()` update**: `reconnect()` resets attempt counter and connects immediately. `disconnect()` takes `options?: { reconnect?: boolean }`; `reconnect:false` (default) sets `autoReconnectEnabled = false`; `reconnect:true` lets the close handler schedule. Remove the `isManualReconnect` flag entirely.
 - [ ] **T9 — Backward-compat shim**: In the constructor, merge `reconnectTimeout` into `reconnect.baseDelayMs` if `reconnect` is absent.
-- [ ] **T10 — Tests**: Add `client.test.ts` cases for: fixed vs exponential delay values, jitter bounds, maxAttempts → gave-up, `setAutoReconnect(false)` cancels pending retry, `setAutoReconnect(true)` resumes, `getToken()` rejection doesn't kill the loop, `reconnect()` resets counter. Use fake timers.
-- [ ] **T11 — Docs**: Update the JSDoc on `YuzuClientConfig` and add a short "Reconnection" section to `README.md`.
+- [ ] **T10 — Tests**: Add `client.test.ts` cases for: fixed vs exponential delay values, jitter bounds, maxAttempts → gave-up, `setAutoReconnect(false)` cancels pending retry, `setAutoReconnect(true)` resumes, `getToken()` rejection connects without token + logs warning, `reconnect()` resets counter, `disconnect({ reconnect: true })` schedules a reconnect, `disconnect({ reconnect: false })` (default) suppresses it, `disconnect({ reconnect: true })` while already disconnected kicks `connect()` directly. Use fake timers.
+- [ ] **T11 — Docs**: Update the JSDoc on `YuzuClientConfig` and `disconnect()`, and add a short "Reconnection" section to `README.md`.
 - [ ] **T12 — Version bump**: `1.1.0` (additive, non-breaking) → `npm publish`.
+
+---
+
+## Resolved questions
+
+1. **`getToken()` failure handling** → **Connect anyway without a token**, log a `console.warn`. A rejected token-less connect will just close and re-enter normal backoff; no special retry path needed.
+2. **`reconnectState$` shape** → **Separate observable** from `connected$`, to avoid breaking existing `connected$` consumers.
+3. **`maxAttempts` reset on manual `reconnect()`** → **Yes.** `reconnect()` is an explicit user action and clears `gaveUp` + resets the counter.
+4. **Jitter default** → **0.2 (±20%)** in production; tests set `jitter: 0` for deterministic assertions.
+5. **`disconnect()` semantics** → **Explicit options object**: `disconnect(options?: { reconnect?: boolean })`. `reconnect` defaults to `false` (permanent until `reconnect()`/`setAutoReconnect(true)`); `reconnect: true` lets the close handler schedule a normal backoff. This replaces the implicit `isManualReconnect` one-shot flag, which is removed entirely.
 
 ---
 
 ## Open questions
 
-1. **`getToken()` failure handling**: connect without token, or schedule a retry? → **Proposal: schedule a retry** (same delay rules), since a token-less connect will usually be rejected and close anyway. Log a warning each time.
-2. **`reconnectState$` shape**: separate observable vs. fold into `connected$`? → **Proposal: separate observable** to avoid breaking `connected$` consumers.
-3. **Should `maxAttempts` reset on manual `reconnect()`?** → **Proposal: yes** — `reconnect()` is an explicit user action and should clear `gaveUp`.
-4. **Jitter default**: 0.2 (±20%) is common but adds noise to tests. → **Proposal: default 0.2, but tests set `jitter: 0`** for deterministic assertions.
-5. **`disconnect()` semantics**: should it set `autoReconnectEnabled = false` permanently, or just for this session? → **Proposal: permanent until `setAutoReconnect(true)` or `reconnect()` is called**, which is clearer than the current `isManualReconnect` one-shot trick.
+None remaining. Ready to implement on approval.
 
 ---
 
